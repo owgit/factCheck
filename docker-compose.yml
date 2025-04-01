@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  # Backend service
+  backend:
+    build:
+      context: ./video-upload-app
+      dockerfile: Dockerfile
+    container_name: fact-check-backend
+    volumes:
+      - ./uploads:/app/uploads
+      - ./.env:/app/.env
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  # Frontend service
+  frontend:
+    build:
+      context: ./video-transcription-frontend
+      dockerfile: Dockerfile
+    container_name: fact-check-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+# Volumes for persistent data
+volumes:
+  uploads:
+    driver: local 

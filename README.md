@@ -4,6 +4,7 @@
 [![OpenAI](https://img.shields.io/badge/OpenAI-API-green)](https://openai.com/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-Framework-009688)](https://fastapi.tiangolo.com/)
 [![React](https://img.shields.io/badge/React-Frontend-61DAFB)](https://reactjs.org/)
+[![Docker](https://img.shields.io/badge/Docker-Ready-2496ED)](https://www.docker.com/)
 
 A video fact-checking application that automatically transcribes and verifies factual claims in uploaded videos using OpenAI's advanced AI models.
 
@@ -45,8 +46,11 @@ _[Add screenshots here]_
 - Node.js and npm
 - OpenAI API key
 - FFmpeg (for video processing)
+- Docker and Docker Compose (optional, for containerized setup)
 
 ### Setup
+
+#### Option 1: Traditional Setup
 
 1. Clone the repository
    ```bash
@@ -74,16 +78,58 @@ _[Add screenshots here]_
    npm install
    ```
 
+#### Option 2: Docker Setup
+
+1. Clone the repository
+   ```bash
+   git clone https://github.com/yourusername/fact-check.git
+   cd fact-check
+   ```
+
+2. Copy `env.example` to `.env` and fill in your credentials
+   ```bash
+   cp env.example .env
+   ```
+
+3. Build and start the Docker containers
+   ```bash
+   docker-compose up -d
+   ```
+
+   This will:
+   - Build the backend container with Python and FastAPI
+   - Build the frontend container with Node.js and React
+   - Configure Nginx for serving the frontend and proxying API requests
+   - Set up volume mapping for uploads and environment variables
+
+4. Access the application at http://localhost
+
 ## Usage
 
-### Running the Backend Server
+### Running with Docker
+
+```bash
+# Start the services
+docker-compose up -d
+
+# View logs
+docker-compose logs -f
+
+# Stop the services
+docker-compose down
+
+# Rebuild and start the services (after making changes)
+docker-compose up -d --build
+```
+
+### Running the Backend Server (without Docker)
 
 ```bash
 cd video-upload-app
 uvicorn app:app --reload
 ```
 
-### Running the Frontend Development Server
+### Running the Frontend Development Server (without Docker)
 
 ```bash
 cd video-transcription-frontend
