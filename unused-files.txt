@@ -1,0 +1,31 @@
+# Unused or Potentially Removable Files/Folders
+
+## Duplicate Files
+1. `install.sh` - There's an identical copy in `video-upload-app/install.sh` with a minor Python version difference
+   - Recommendation: Keep only one version, preferably in the root directory
+
+## Test/Sample Files in Uploads
+1. `uploads/9749ca795474401cb4a683d5893e3e55.MP4` - Appears to be a test upload
+2. `uploads/audio.wav` - Temporary audio file that should be cleaned up
+3. `uploads/downloaded_instagram_video.mp4.webm` - Test download
+4. `uploads/Follow%20(us)%20%40Comedians.IG...` - Test video
+
+## Compilation Artifacts
+1. `video-upload-app/__pycache__/` - Python compilation artifacts
+   - Recommendation: Add to .gitignore if not already present
+
+## Build Artifacts
+1. `video-transcription-frontend/build/` - These are generated files and shouldn't be in version control
+   - Recommendation: Add to .gitignore if not already present
+
+## Node.js Files in Backend Directory
+1. `video-upload-app/package.json` and `video-upload-app/package-lock.json` - Node.js files in Python backend directory
+   - Recommendation: If the backend is Python-only, these files might be unnecessary
+
+## Development Files
+1. `video-transcription-frontend/src/App.test.js` - Test file that may not be needed in production
+2. `video-transcription-frontend/src/setupTests.js` - Test setup that may not be needed in production
+3. `video-transcription-frontend/src/logo.svg` - Default React logo file
+
+## Note
+Before removing any files, verify they are truly unused in the current application. Some files might appear unused but could be required during build or deployment processes. 

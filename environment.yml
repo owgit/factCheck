@@ -1,0 +1,63 @@
+name: FactCheckAI
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11.5
+  - fastapi=0.112.0
+  - ffmpeg
+  - filelock=3.15.4
+  - imageio=2.34.2
+  - jinja2=3.1.4
+  - moviepy=1.0.3
+  - networkx=3.3
+  - numba=0.60.0
+  - numpy=2.0.1
+  - pillow=10.4.0
+  - pydantic=2.8.2
+  - python-dotenv=1.0.1
+  - regex=2024.7.24
+  - requests=2.32.3
+  - sympy=1.13.1
+  - tqdm=4.66.5
+  - typing_extensions=4.12.2
+  - pip
+  - pip:
+      - torch  # Install via pip to get the correct version
+      - uvicorn
+      - aiohappyeyeballs==2.3.5
+      - aiohttp==3.10.1
+      - aiosignal==1.3.1
+      - annotated-types==0.7.0
+      - anyio==4.4.0
+      - attrs==24.2.0
+      - Brotli==1.1.0
+      - certifi==2024.7.4
+      - charset-normalizer==3.3.2
+      - click==8.1.7
+      - decorator==4.4.2
+      - distro==1.9.0
+      - frozenlist==1.4.1
+      - fsspec==2024.6.1
+      - h11==0.14.0
+      - httpcore==1.0.5
+      - httpx==0.27.0
+      - idna==3.7
+      - imageio-ffmpeg==0.5.1
+      - jiter==0.5.0
+      - llvmlite==0.43.0
+      - MarkupSafe==2.1.5
+      - more-itertools==10.4.0
+      - mutagen==1.47.0
+      - openai==1.40.1
+      - openai-whisper @ git+https://github.com/openai/whisper.git@ba3f3cd54b0e5b8ce1ab3de13e32122d0d5f98ab
+      - proglog==0.1.10
+      - pycryptodomex==3.20.0
+      - python-multipart==0.0.9
+      - six==1.16.0
+      - sniffio==1.3.1
+      - starlette==0.37.2
+      - tiktoken==0.7.0
+      - websockets==13.0
+      - whisper==1.1.10
+      - yarl==1.9.4
+      - yt-dlp==2024.8.6

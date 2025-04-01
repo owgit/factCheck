@@ -1,0 +1,171 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom animations */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulseHighlight {
+  0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.5); }
+  70% { box-shadow: 0 0 0 10px rgba(59, 130, 246, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
+}
+
+@keyframes shimmer {
+  0% { background-position: -1000px 0; }
+  100% { background-position: 1000px 0; }
+}
+
+/* Animation utility classes */
+.animate-fadeIn {
+  animation: fadeIn 0.5s ease-out forwards;
+}
+
+.animate-pulse-highlight {
+  animation: pulseHighlight 2s infinite;
+}
+
+/* Overall container styling */
+.fact-check {
+  font-family: Arial, sans-serif;
+  line-height: 1.6;
+}
+
+/* Header styling */
+.fact-check .result {
+  font-size: 1.5em;
+  font-weight: bold;
+  color: #d9534f; /* Red for failure */
+  margin-bottom: 20px;
+}
+
+.fact-check .result.accurate {
+  color: #5cb85c; /* Green for success */
+}
+
+.fact-check .result.mixed {
+  color: #f0ad4e; /* Yellow for mixed */
+}
+
+.fact-check .result.inconclusive {
+  color: #6c757d; /* Gray for inconclusive */
+}
+
+/* Sources section styling */
+.fact-check .sources {
+  margin-bottom: 20px;
+}
+
+.fact-check .sources h3 {
+  font-size: 1.2em;
+  margin-bottom: 10px;
+}
+
+.fact-check .sources ul {
+  list-style-type: none;
+  padding: 0;
+}
+
+.fact-check .sources li {
+  margin-bottom: 5px;
+}
+
+.fact-check .sources a {
+  color: #0275d8; /* Blue links */
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+.fact-check .sources a:hover {
+  text-decoration: underline;
+  color: #014c8c;
+}
+
+/* Findings section styling */
+.fact-check .findings {
+  margin-bottom: 20px;
+}
+
+.fact-check .findings h3 {
+  font-size: 1.2em;
+  margin-bottom: 10px;
+}
+
+.fact-check .findings ul {
+  list-style-type: none;
+  padding: 0;
+}
+
+.fact-check .findings li {
+  margin-bottom: 15px;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.fact-check .findings li:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+.fact-check .findings .claim-text {
+  font-weight: bold;
+}
+
+.fact-check .findings .accuracy {
+  font-style: italic;
+}
+
+.fact-check .findings .accuracy.accurate {
+  color: #5cb85c; /* Green for accurate */
+}
+
+.fact-check .findings .accuracy.inaccurate {
+  color: #d9534f; /* Red for inaccurate */
+}
+
+.fact-check .findings .accuracy.partly {
+  color: #f0ad4e; /* Yellow for partly accurate */
+}
+
+.fact-check .findings .accuracy.unknown {
+  color: #6c757d; /* Gray for unknown */
+}
+
+.fact-check .findings .explanation {
+  margin-top: 5px;
+  font-size: 0.9em;
+  color: #333;
+}
+
+/* Analysis section styling */
+.fact-check .analysis h3 {
+  font-size: 1.2em;
+  margin-bottom: 10px;
+}
+
+.fact-check .analysis p {
+  font-size: 1em;
+  color: #333;
+}
+
+/* Loading effect for fact-checking in progress */
+.fact-check-loading {
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 0.5rem;
+  height: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+/* Responsive adjustments */
+@media (max-width: 640px) {
+  .fact-check .findings .claim-text,
+  .fact-check .findings .accuracy {
+    display: block;
+    width: 100%;
+    margin-bottom: 0.25rem;
+  }
+}

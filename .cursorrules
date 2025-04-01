@@ -1,0 +1,43 @@
+# Cursor Rules for Fact Check Project
+
+## Project Patterns
+- Video processing application for fact checking
+- Uses OpenAI API for transcription and fact checking
+- Frontend and backend components separate
+- API key management through environment variables
+
+## File Organization
+- Frontend appears to be in video-transcription-frontend/
+- Multiple potential backend components
+- Uploads stored in uploads/ directory
+- Python environment management with both venv and conda
+
+## Code Style Preferences
+- Separate CSS and JS in separate files
+- Use modern practices for OpenAI API integrations
+- Keep code clean and organized
+- Prefer simple solutions over complex ones
+- Avoid code duplication
+
+## Development Workflow
+- Check for existing solutions before adding new functions
+- Use focused edits
+- Check for code conflicts
+- Ask before creating extra scripts
+- Search the web for API questions
+- Don't assume API or endpoint availability
+
+## Environment
+- macOS M4
+- MAMP installed for local database
+- Python virtual environment
+
+## Known Issues
+- None identified yet
+
+## Project Owner
+- Name: Uygar Duzgun
+- Email: Info@uygarduzgun
+- Website: uygarduzgun.com
+- GitHub: owgit
+- Buy me a coffee: https://buymeacoffee.com/uygarduzgun 
