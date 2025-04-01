@@ -6,7 +6,7 @@
 [![React](https://img.shields.io/badge/React-Frontend-61DAFB)](https://reactjs.org/)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED)](https://www.docker.com/)
 
-A video fact-checking application that automatically transcribes and verifies factual claims in uploaded videos using OpenAI's advanced AI models.
+A video fact-checking application for Instagram that automatically transcribes and verifies factual claims in uploaded videos using OpenAI's advanced AI models.
 
 ## Features
 
