@@ -224,40 +224,67 @@ def download_instagram_video(url: str) -> str:
         cleanup_old_files()
         L = instaloader.Instaloader(dirname_pattern=UPLOAD_DIRECTORY)
         
-        # First try to download without login (for public content)
-        try:
-            logging.debug("Attempting to download without login")
-            post = instaloader.Post.from_shortcode(L.context, url.split("/")[-2])
-            L.download_post(post, target=UPLOAD_DIRECTORY)
-        except instaloader.exceptions.LoginRequiredException:
-            # If login required, try to login
-            logging.debug("Login required for this content")
-            if INSTAGRAM_USERNAME and INSTAGRAM_PASSWORD:
-                try:
-                    L.login(INSTAGRAM_USERNAME, INSTAGRAM_PASSWORD)
-                    logging.debug("Login successful")
-                    # Download again with login
-                    post = instaloader.Post.from_shortcode(L.context, url.split("/")[-2])
-                    L.download_post(post, target=UPLOAD_DIRECTORY)
-                except Exception as login_error:
-                    logging.error(f"Login failed: {str(login_error)}")
-                    raise HTTPException(status_code=401, detail="Instagram login failed. This content requires login, but login attempt was unsuccessful.")
-            else:
-                raise HTTPException(status_code=403, detail="Instagram login required but no credentials provided")
+        # Extract the shortcode from the URL
+        if '/p/' in url:
+            shortcode = url.split('/p/')[1].split('/')[0]
+        elif '/reel/' in url:
+            shortcode = url.split('/reel/')[1].split('/')[0]
+        else:
+            shortcode = url.split('/')[-2] if url.endswith('/') else url.split('/')[-1]
         
+        logging.info(f"Attempting to download Instagram content with shortcode: {shortcode}")
+        
+        # Always try to login first if credentials are provided
+        if INSTAGRAM_USERNAME and INSTAGRAM_PASSWORD:
+            try:
+                logging.info(f"Logging in to Instagram as {INSTAGRAM_USERNAME}")
+                L.login(INSTAGRAM_USERNAME, INSTAGRAM_PASSWORD)
+                logging.info("Instagram login successful")
+            except Exception as login_error:
+                logging.error(f"Instagram login failed: {str(login_error)}")
+                # Continue without login to try public content
+        
+        try:
+            # Try to download the post
+            logging.info(f"Downloading post with shortcode: {shortcode}")
+            post = instaloader.Post.from_shortcode(L.context, shortcode)
+            L.download_post(post, target=UPLOAD_DIRECTORY)
+            logging.info("Download successful")
+        except instaloader.exceptions.LoginRequiredException:
+            logging.error("Login required but failed or not provided")
+            raise HTTPException(
+                status_code=403, 
+                detail="This Instagram content requires login. Please check your credentials or try a public post."
+            )
+        except Exception as e:
+            logging.error(f"Error downloading post: {str(e)}")
+            raise HTTPException(
+                status_code=500, 
+                detail=f"Failed to download Instagram content: {str(e)}. Instagram may be blocking automated access."
+            )
+        
+        # Find downloaded media files
         media_files = [f for f in glob.glob(os.path.join(UPLOAD_DIRECTORY, "*")) 
-                       if f.lower().endswith(('.mp4', '.jpg', '.jpeg', '.png'))]
+                      if f.lower().endswith(('.mp4', '.jpg', '.jpeg', '.png'))]
         
         if not media_files:
-            raise FileNotFoundError(f"No media files found in {UPLOAD_DIRECTORY}")
+            raise HTTPException(
+                status_code=404, 
+                detail="No media files found after download. The post may not contain downloadable media."
+            )
         
         latest_media_file = max(media_files, key=os.path.getctime)
-        logging.debug(f"Latest media file found: {latest_media_file}")
+        logging.info(f"Latest media file found: {latest_media_file}")
         
         return latest_media_file
+    except HTTPException as he:
+        raise he
     except Exception as e:
         logging.error(f"Error downloading Instagram content: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error downloading Instagram content: {str(e)}")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Error processing Instagram URL: {str(e)}. Instagram may be blocking access from this server."
+        )
 
 @app.post("/upload")
 async def upload_file(file: UploadFile = File(None), url: str = Form(None)):

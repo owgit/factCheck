@@ -125,7 +125,9 @@ docker-compose up -d --build
 ./docker-debug.sh
 ```
 
-### Troubleshooting Docker Issues
+## Troubleshooting
+
+### Docker Issues
 
 If you encounter issues with the Docker setup:
 
@@ -134,6 +136,32 @@ If you encounter issues with the Docker setup:
 3. Verify file permissions in containers
 4. Ensure your `.env` file is correctly set up
 5. If necessary, rebuild containers: `docker-compose up -d --build`
+
+### Instagram Integration Issues
+
+Instagram has strict measures against automated access, which may cause problems when downloading content:
+
+1. **Authentication Issues**:
+   - Ensure your Instagram credentials in `.env` are correct
+   - Use a less restricted Instagram account (avoid using accounts that have had suspicious activity)
+   - Try using a VPN if Instagram is blocking access from your server's IP
+
+2. **"401 Unauthorized" Errors**:
+   - Instagram occasionally blocks automated tools; this is common and expected
+   - Consider using a different Instagram account
+   - Wait a few hours before trying again (Instagram rate limits can be temporary)
+
+3. **"Failed to Download" Errors**:
+   - Verify the post URL is correct and accessible (test by opening it in a browser)
+   - Check if the post is from a private account
+   - Instagram's API changes frequently, so the instaloader library may need updates:
+     ```bash
+     pip install -U instaloader
+     ```
+
+4. **Alternative Solutions**:
+   - If Instagram integration is critical, consider implementing a browser-based solution with Selenium
+   - Implement a fallback mechanism for users to manually upload videos
 
 ### Running the Backend Server (without Docker)
 
@@ -164,7 +192,7 @@ Set the following environment variables in your `.env` file:
 |----------|-------------|---------|
 | `OPENAI_API_KEY` | Your OpenAI API key | required |
 | `GOOGLE_API_KEY` | Your Google API key (if applicable) | optional |
-| `ALLOWED_ORIGINS` | Comma-separated list of allowed origins for CORS | https://fact.scdesign.eu,http://localhost:3000 |
+| `ALLOWED_ORIGINS` | Comma-separated list of allowed origins for CORS | * |
 | `FACT_CHECK_MODEL` | OpenAI model for fact checking | chatgpt-4o-latest |
 | `IMAGE_ANALYSIS_MODEL` | OpenAI model for image analysis | gpt-4-vision-preview |
 | `TRANSCRIPTION_MODEL` | OpenAI model for transcription | whisper-1 |
