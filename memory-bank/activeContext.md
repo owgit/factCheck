@@ -4,6 +4,8 @@
 - Preparing the project for public repository
 - Documentation and environment setup
 - Cleaning up unused files and directories
+- Git repository setup and optimization
+- Environment configuration centralization
 
 ## Recent Changes
 - Created memory bank structure
@@ -15,12 +17,21 @@
 - Identified and documented unused files and directories
 - Cleaned up test/sample files from the uploads directory
 - Enhanced .gitignore to exclude build artifacts and test files
+- Removed nested Git repository in video-transcription-frontend
+- Initialized Git repository in the root directory with 'main' as default branch
+- Made initial commit with all project files (except those in .gitignore)
+- Moved .env file to root directory and made video-upload-app/.env a symlink to it
+- Updated app.py to look for .env in the root directory
+- Added memory-bank to .gitignore to keep development notes private
 
 ## Active Decisions
 - Using GPT-4o (chatgpt-4o-latest) as the fact checking model
 - Setting up the framework for video upload, transcription, and fact checking
 - Keeping sensitive information out of the public repository
 - Removing unnecessary test files and build artifacts
+- Using a single Git repository at the root level instead of nested repositories
+- Centralizing environment configuration in the root directory
+- Keeping memory-bank as a local development resource, not part of the public repository
 
 ## Current Challenges
 - Need to fully understand the existing codebase structure

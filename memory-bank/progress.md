@@ -12,6 +12,12 @@
 - Identified and documented unused files
 - Cleaned up test files from uploads directory
 - Enhanced .gitignore to exclude unnecessary artifacts
+- Removed nested Git repository in video-transcription-frontend
+- Initialized Git repository in root directory with 'main' branch
+- Made initial commit with project files
+- Centralized environment configuration (.env) in root directory
+- Updated application to look for .env in root directory
+- Added memory-bank to .gitignore to exclude development notes from repository
 
 ## In Progress
 - Understanding existing codebase structure
@@ -34,15 +40,19 @@
 ## Current Status
 - Initial setup phase
 - Project appears to be a video upload and fact-checking application using OpenAI services
-- Basic environment configuration is in place
+- Basic environment configuration is in place and centralized in root directory
 - Project is being prepared for public repository access
 - Cleanup of unnecessary files in progress
+- Git repository initialized and configured with 'main' branch
+- Development notes (memory-bank) excluded from version control
 
 ## Milestones
 - [x] Project initialization
 - [x] Memory bank setup
 - [x] Repository preparation (README, env.example, .gitignore)
 - [x] Initial cleanup of unused files
+- [x] Git repository setup
+- [x] Environment configuration centralization
 - [ ] Complete understanding of existing implementation
 - [ ] Documentation of current workflow
 - [ ] Verification of API integrations
