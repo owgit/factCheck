@@ -13,14 +13,17 @@ import shutil
 from datetime import datetime, timedelta
 
 # Load environment variables
-env_path = os.getenv('ENV_FILE', os.path.join(os.path.dirname(__file__), '.env'))
+env_path = os.getenv('ENV_FILE', os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env'))
 load_dotenv(dotenv_path=env_path)
 
 # ... (other imports and setup code)
 
 INSTAGRAM_USERNAME = os.getenv('INSTAGRAM_USERNAME')
 INSTAGRAM_PASSWORD = os.getenv('INSTAGRAM_PASSWORD')
-ALLOWED_ORIGINS = os.getenv('ALLOWED_ORIGINS', 'https://fact.scdesign.eu').split(',')
+
+# Get CORS settings from env with fallback to allow all origins in development
+ALLOWED_ORIGINS_ENV = os.getenv('ALLOWED_ORIGINS', '*')
+ALLOWED_ORIGINS = [origin.strip() for origin in ALLOWED_ORIGINS_ENV.split(',')] if ALLOWED_ORIGINS_ENV != '*' else ['*']
 
 # Get model names from environment variables with defaults
 FACT_CHECK_MODEL = os.getenv('FACT_CHECK_MODEL', 'gpt-4o-mini')
