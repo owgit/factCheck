@@ -96,10 +96,10 @@ npm start
 ## Screenshots
 
 ### Input Screen
-![Upload Interface](../ScreenShots/1.png)
+![Upload Interface](./screenshots/1.png)
 
 ### Fact-Checking Results
-![Fact Check Results](../ScreenShots/2.png)
+![Fact Check Results](./screenshots/2.png)
 
 ## Notes
 
