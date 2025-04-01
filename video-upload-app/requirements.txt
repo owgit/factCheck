@@ -2,7 +2,7 @@ fastapi==0.103.1
 uvicorn==0.23.2
 python-multipart==0.0.6
 python-dotenv==1.0.0
-openai==0.27.8
+openai>=1.0.0
 moviepy==1.0.3
 requests==2.31.0
 instaloader==4.10.0
