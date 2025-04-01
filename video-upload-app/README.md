@@ -1,70 +1,99 @@
-# Getting Started with Create React App
+# Fact Check App
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+A powerful video and image fact-checking application that uses AI to analyze content for accuracy and misinformation.
 
-## Available Scripts
+## Features
 
-In the project directory, you can run:
+- **Instagram Video Downloads**: Automatically download videos from Instagram for fact-checking
+- **Video Transcription**: Convert video audio to text using OpenAI's Whisper model
+- **Fact Checking**: Analyze transcribed content for factual accuracy using AI
+- **Image Analysis**: Examine images for misinformation and verify visual claims
+- **Direct File Upload**: Support for direct video and image file uploads
+- **Detailed Reports**: Generate comprehensive HTML reports on fact-checking results
 
-### `npm start`
+## Supported Media Types
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+- **Videos**: MP4, MOV, AVI
+- **Images**: JPG, JPEG, PNG, GIF
+- **Sources**: Instagram links, direct file uploads
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+## Technologies Used
 
-### `npm test`
+- **Backend**: FastAPI (Python)
+- **Frontend**: React
+- **AI Models**:
+  - OpenAI GPT models for fact-checking
+  - OpenAI Whisper for transcription
+  - OpenAI Vision model for image analysis
+- **Media Processing**: MoviePy, FFmpeg
+- **Social Media Integration**: Instaloader for Instagram downloads
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+## Getting Started
 
-### `npm run build`
+### Prerequisites
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+- Python 3.8+
+- Node.js and npm
+- FFmpeg installed on your system
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+### Environment Variables
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+Create a `.env` file in the project root with the following variables:
 
-### `npm run eject`
+```
+OPENAI_API_KEY=your_openai_api_key
+INSTAGRAM_USERNAME=your_instagram_username
+INSTAGRAM_PASSWORD=your_instagram_password
+ALLOWED_ORIGINS=http://localhost:3000,https://yourdomain.com
+FACT_CHECK_MODEL=gpt-4o-mini
+IMAGE_ANALYSIS_MODEL=gpt-4-vision-preview
+TRANSCRIPTION_MODEL=whisper-1
+INSTAGRAM_MAX_RETRIES=3
+INSTAGRAM_RETRY_DELAY=2
+```
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+### Installation
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+1. Clone the repository:
+```
+git clone https://github.com/yourusername/factCheck.git
+cd factCheck
+```
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+2. Set up the Python backend:
+```
+cd video-upload-app
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+pip install -r requirements.txt
+```
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+3. Set up the React frontend:
+```
+npm install
+```
 
-## Learn More
+4. Start the backend server:
+```
+uvicorn app:app --reload --host 0.0.0.0 --port 8000
+```
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+5. In a separate terminal, start the frontend:
+```
+npm start
+```
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+6. Open your browser to http://localhost:3000
 
-### Code Splitting
+## Usage
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+1. Enter an Instagram URL or upload a video/image file
+2. The app will download the content (if from Instagram)
+3. For videos, audio will be extracted and transcribed
+4. The AI will analyze the content for factual accuracy
+5. A detailed fact-checking report will be generated
 
-### Analyzing the Bundle Size
+## Notes
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
-
-### Making a Progressive Web App
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
-
-### Advanced Configuration
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
-
-### Deployment
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
-
-### `npm run build` fails to minify
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+- Instagram's anti-scraping measures may occasionally block automated downloads. In these cases, you can download the video manually and upload it directly.
+- The accuracy of fact-checking depends on the AI models and the available information at the time of analysis.
