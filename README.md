@@ -120,7 +120,20 @@ docker-compose down
 
 # Rebuild and start the services (after making changes)
 docker-compose up -d --build
+
+# Debug Docker issues
+./docker-debug.sh
 ```
+
+### Troubleshooting Docker Issues
+
+If you encounter issues with the Docker setup:
+
+1. Run the debugging script: `./docker-debug.sh`
+2. Check container logs: `docker-compose logs`
+3. Verify file permissions in containers
+4. Ensure your `.env` file is correctly set up
+5. If necessary, rebuild containers: `docker-compose up -d --build`
 
 ### Running the Backend Server (without Docker)
 
@@ -190,4 +203,4 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 - Uygar Duzgun - [uygarduzgun.com](https://uygarduzgun.com)
 - GitHub: [owgit](https://github.com/owgit)
-- Support: [Buy me a coffee](https://buymeacoffee.com/uygarduzgun) 
+- Support: [Buy me a coffee](https://buymeacoffee.com/uygarduzgun)
