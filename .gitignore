@@ -40,3 +40,6 @@ uploads/*
 *.mp4
 *.wav
 *.webm
+
+# Project notes and memory
+memory-bank/
