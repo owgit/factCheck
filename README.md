@@ -37,7 +37,9 @@ A video fact-checking application that automatically transcribes and verifies fa
 
 ## Screenshots
 
-_[Add screenshots here]_
+![2](https://github.com/user-attachments/assets/b9df478c-ab60-44ef-9b99-9a73de056c68)
+![1](https://github.com/user-attachments/assets/1d76a336-938b-46e4-89ee-a02856efe8f9)
+
 
 ## Installation
 
