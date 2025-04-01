@@ -93,6 +93,14 @@ npm start
 4. The AI will analyze the content for factual accuracy
 5. A detailed fact-checking report will be generated
 
+## Screenshots
+
+### Input Screen
+![Upload Interface](../ScreenShots/1.png)
+
+### Fact-Checking Results
+![Fact Check Results](../ScreenShots/2.png)
+
 ## Notes
 
 - Instagram's anti-scraping measures may occasionally block automated downloads. In these cases, you can download the video manually and upload it directly.
