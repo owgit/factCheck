@@ -1,7 +1,11 @@
 import os
 import base64
 import logging
-from fastapi import FastAPI, File, UploadFile, HTTPException, Form
+import time
+import random
+import requests
+import traceback
+from fastapi import FastAPI, File, UploadFile, HTTPException, Form, BackgroundTasks
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from moviepy.editor import VideoFileClip
@@ -11,6 +15,10 @@ import instaloader
 import glob
 import shutil
 from datetime import datetime, timedelta
+
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Load environment variables
 env_path = os.getenv('ENV_FILE', os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env'))
@@ -24,6 +32,10 @@ INSTAGRAM_PASSWORD = os.getenv('INSTAGRAM_PASSWORD')
 # Get CORS settings from env with fallback to allow all origins in development
 ALLOWED_ORIGINS_ENV = os.getenv('ALLOWED_ORIGINS', '*')
 ALLOWED_ORIGINS = [origin.strip() for origin in ALLOWED_ORIGINS_ENV.split(',')] if ALLOWED_ORIGINS_ENV != '*' else ['*']
+
+# Max retries for Instagram downloads
+INSTAGRAM_MAX_RETRIES = int(os.getenv('INSTAGRAM_MAX_RETRIES', '3'))
+INSTAGRAM_RETRY_DELAY = int(os.getenv('INSTAGRAM_RETRY_DELAY', '2'))
 
 # Get model names from environment variables with defaults
 FACT_CHECK_MODEL = os.getenv('FACT_CHECK_MODEL', 'gpt-4o-mini')
@@ -220,85 +232,181 @@ def process_video(video_path):
         raise HTTPException(status_code=500, detail=f"Error processing video: {str(e)}")
 
 def download_instagram_video(url: str) -> str:
-    try:
-        cleanup_old_files()
-        L = instaloader.Instaloader(dirname_pattern=UPLOAD_DIRECTORY)
-        
-        # Extract the shortcode from the URL
-        if '/p/' in url:
-            shortcode = url.split('/p/')[1].split('/')[0]
-        elif '/reel/' in url:
-            shortcode = url.split('/reel/')[1].split('/')[0]
-        else:
-            shortcode = url.split('/')[-2] if url.endswith('/') else url.split('/')[-1]
-        
-        logging.info(f"Attempting to download Instagram content with shortcode: {shortcode}")
-        
-        # Always try to login first if credentials are provided
-        if INSTAGRAM_USERNAME and INSTAGRAM_PASSWORD:
-            try:
-                logging.info(f"Logging in to Instagram as {INSTAGRAM_USERNAME}")
-                L.login(INSTAGRAM_USERNAME, INSTAGRAM_PASSWORD)
-                logging.info("Instagram login successful")
-            except Exception as login_error:
-                logging.error(f"Instagram login failed: {str(login_error)}")
-                # Continue without login to try public content
-        
+    """Download video from Instagram with better error handling and fallback mechanism"""
+    is_docker = os.path.exists('/.dockerenv')  # Check if running in Docker
+    
+    if is_docker:
+        logger.info("Running in Docker environment - using adapted Instagram download approach")
+    
+    for attempt in range(INSTAGRAM_MAX_RETRIES):
         try:
-            # Try to download the post
-            logging.info(f"Downloading post with shortcode: {shortcode}")
-            post = instaloader.Post.from_shortcode(L.context, shortcode)
-            L.download_post(post, target=UPLOAD_DIRECTORY)
-            logging.info("Download successful")
-        except instaloader.exceptions.LoginRequiredException:
-            logging.error("Login required but failed or not provided")
-            raise HTTPException(
-                status_code=403, 
-                detail="This Instagram content requires login. Please check your credentials or try a public post."
+            cleanup_old_files()
+            logger.info(f"Instagram download attempt {attempt+1}/{INSTAGRAM_MAX_RETRIES} for URL: {url}")
+            
+            # Improved URL parsing to extract shortcode/post ID
+            shortcode = None
+            if '/p/' in url:
+                shortcode = url.split('/p/')[1].split('/')[0].split('?')[0]
+            elif '/reel/' in url:
+                shortcode = url.split('/reel/')[1].split('/')[0].split('?')[0]
+            elif '/tv/' in url:
+                shortcode = url.split('/tv/')[1].split('/')[0].split('?')[0]
+            else:
+                # Try to extract from end of URL
+                path_parts = url.rstrip('/').split('/')
+                if len(path_parts) > 0:
+                    potential_code = path_parts[-1].split('?')[0]
+                    if potential_code and not potential_code.startswith('http'):
+                        shortcode = potential_code
+            
+            if not shortcode:
+                logger.error("Could not extract shortcode from Instagram URL")
+                raise ValueError("Invalid Instagram URL format")
+                
+            logger.info(f"Extracted Instagram shortcode: {shortcode}")
+            
+            # Add jitter to delay to appear more like human behavior
+            delay = INSTAGRAM_RETRY_DELAY + random.uniform(0.5, 2.0)
+            logger.info(f"Waiting {delay:.2f} seconds before Instagram request")
+            time.sleep(delay)
+            
+            # Setup instaloader with specific settings for Docker environment
+            L = instaloader.Instaloader(
+                dirname_pattern=UPLOAD_DIRECTORY,
+                download_videos=True,
+                download_video_thumbnails=False,
+                download_geotags=False,
+                download_comments=False,
+                save_metadata=False,
+                compress_json=False
             )
+            
+            # Improved login handling
+            login_successful = False
+            if INSTAGRAM_USERNAME and INSTAGRAM_PASSWORD:
+                try:
+                    logger.info(f"Logging in to Instagram as {INSTAGRAM_USERNAME}")
+                    L.login(INSTAGRAM_USERNAME, INSTAGRAM_PASSWORD)
+                    logger.info("Instagram login successful")
+                    login_successful = True
+                    # Add substantial delay after login to reduce suspicion
+                    time.sleep(3 if is_docker else 1.5)
+                except Exception as login_error:
+                    logger.error(f"Instagram login failed: {str(login_error)}")
+                    logger.error(traceback.format_exc())
+                    # Don't abort on login failure, try anonymous download
+                    
+            # Try to download post
+            try:
+                logger.info(f"Downloading Instagram post with shortcode: {shortcode}")
+                post = instaloader.Post.from_shortcode(L.context, shortcode)
+                L.download_post(post, target=UPLOAD_DIRECTORY)
+                logger.info("Instagram download successful")
+            except Exception as e:
+                logger.error(f"Error downloading via Instaloader: {str(e)}")
+                logger.error(traceback.format_exc())
+                
+                # More specific error details for debugging
+                if "401" in str(e):
+                    logger.error("Instagram 401 error: Authentication required or rate limited")
+                elif "429" in str(e):
+                    logger.error("Instagram 429 error: Too many requests, rate limited")
+                elif "Login required" in str(e):
+                    logger.error("Instagram requires login for this content")
+                elif "window._sharedData" in str(e):
+                    logger.error("Instagram page structure changed - parser needs updating")
+                
+                raise e
+            
+            # Find downloaded media files
+            media_files = [f for f in glob.glob(os.path.join(UPLOAD_DIRECTORY, "*")) 
+                          if f.lower().endswith(('.mp4', '.jpg', '.jpeg', '.png')) and 
+                          os.path.getmtime(f) > time.time() - 60]  # Only consider recent files
+            
+            if not media_files:
+                logger.warning("No media files found after download")
+                raise FileNotFoundError("No media files downloaded")
+            
+            latest_media_file = max(media_files, key=os.path.getctime)
+            logger.info(f"Found media file: {latest_media_file}")
+            return latest_media_file
+            
         except Exception as e:
-            logging.error(f"Error downloading post: {str(e)}")
-            raise HTTPException(
-                status_code=500, 
-                detail=f"Failed to download Instagram content: {str(e)}. Instagram may be blocking automated access."
-            )
-        
-        # Find downloaded media files
-        media_files = [f for f in glob.glob(os.path.join(UPLOAD_DIRECTORY, "*")) 
-                      if f.lower().endswith(('.mp4', '.jpg', '.jpeg', '.png'))]
-        
-        if not media_files:
-            raise HTTPException(
-                status_code=404, 
-                detail="No media files found after download. The post may not contain downloadable media."
-            )
-        
-        latest_media_file = max(media_files, key=os.path.getctime)
-        logging.info(f"Latest media file found: {latest_media_file}")
-        
-        return latest_media_file
-    except HTTPException as he:
-        raise he
-    except Exception as e:
-        logging.error(f"Error downloading Instagram content: {str(e)}")
-        raise HTTPException(
-            status_code=500, 
-            detail=f"Error processing Instagram URL: {str(e)}. Instagram may be blocking access from this server."
-        )
+            logger.error(f"Instagram download attempt {attempt+1} failed: {str(e)}")
+            
+            # If we've tried all attempts, try the direct fallback approach
+            if attempt == INSTAGRAM_MAX_RETRIES - 1:
+                logger.warning("All Instagram download attempts failed, using fallback")
+                return handle_instagram_fallback(url)
+            
+            # Otherwise wait before retrying with increasing delay
+            retry_delay = INSTAGRAM_RETRY_DELAY * (attempt + 1) + random.uniform(1, 3)
+            logger.info(f"Waiting {retry_delay:.2f} seconds before retry #{attempt+2}")
+            time.sleep(retry_delay)
+    
+    # This should not be reached due to the fallback, but just in case
+    raise HTTPException(
+        status_code=500,
+        detail="Failed to download Instagram content after multiple attempts"
+    )
+
+def handle_instagram_fallback(url: str) -> str:
+    """Fallback method when instaloader fails - returns error and suggests manual upload"""
+    logger.info("Using Instagram fallback mechanism")
+    
+    # Create detailed error message
+    error_message = (
+        "Instagram download failed. Instagram's API is blocking automated access from our server. "
+        "This is a common issue with Instagram's anti-scraping measures. "
+        "Please download the video manually and upload it directly."
+    )
+    
+    # Log the specific URL that failed
+    logger.error(f"Instagram fallback triggered for URL: {url}")
+    
+    # Return a structured error response that the frontend can handle
+    raise HTTPException(
+        status_code=502,  # Bad Gateway
+        detail={
+            "error": "instagram_blocked",
+            "message": error_message,
+            "suggestion": "Please download the video manually and upload the file directly.",
+            "url": url
+        }
+    )
 
 @app.post("/upload")
-async def upload_file(file: UploadFile = File(None), url: str = Form(None)):
+async def upload_file(file: UploadFile = File(None), url: str = Form(None), background_tasks: BackgroundTasks = None):
     try:
         cleanup_old_files()
         
         if url:
-            media_path = download_instagram_video(url)
+            if "instagram.com" in url or "instagr.am" in url:
+                try:
+                    media_path = download_instagram_video(url)
+                except HTTPException as e:
+                    if e.status_code == 502 and isinstance(e.detail, dict) and e.detail.get("error") == "instagram_blocked":
+                        # Return a more user-friendly error for frontend handling
+                        return JSONResponse(
+                            status_code=502,
+                            content={
+                                "error": "instagram_blocked",
+                                "message": e.detail.get("message", "Instagram download failed"),
+                                "suggestion": e.detail.get("suggestion", "Please upload the file directly"),
+                                "url": e.detail.get("url", url)
+                            }
+                        )
+                    else:
+                        raise e
+            else:
+                # Handle other URLs if needed
+                raise HTTPException(status_code=400, detail="Only Instagram URLs are currently supported")
         elif file:
             media_path = os.path.join(UPLOAD_DIRECTORY, file.filename)
             with open(media_path, "wb") as buffer:
                 shutil.copyfileobj(file.file, buffer)
         else:
-            raise HTTPException(status_code=400, detail="No file or URL provided.")
+            raise HTTPException(status_code=400, detail="No file or URL provided")
 
         if not os.path.exists(media_path):
             raise HTTPException(status_code=404, detail=f"Media file not found: {media_path}")
@@ -314,7 +422,7 @@ async def upload_file(file: UploadFile = File(None), url: str = Form(None)):
     except HTTPException as he:
         raise he
     except Exception as e:
-        logging.error(f"Error occurred: {str(e)}")
+        logger.error(f"Error processing upload: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":

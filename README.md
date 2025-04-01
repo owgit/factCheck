@@ -137,31 +137,38 @@ If you encounter issues with the Docker setup:
 4. Ensure your `.env` file is correctly set up
 5. If necessary, rebuild containers: `docker-compose up -d --build`
 
+- **Error: No such file or directory**: Ensure all paths in docker-compose.yml are correct and that you've created any required directories.
+- **Backend can't connect to OpenAI API**: Verify your API key in the .env file is correct and that you have sufficient credits.
+- **Frontend not connecting to backend**: Check the REACT_APP_API_URL in your environment variables and ensure the backend service is running.
+
 ### Instagram Integration Issues
 
-Instagram has strict measures against automated access, which may cause problems when downloading content:
+The Instagram integration uses third-party libraries to download content from Instagram for fact-checking. Due to Instagram's measures against automated access, you may encounter the following issues:
 
-1. **Authentication Issues**:
-   - Ensure your Instagram credentials in `.env` are correct
-   - Use a less restricted Instagram account (avoid using accounts that have had suspicious activity)
-   - Try using a VPN if Instagram is blocking access from your server's IP
+#### Common Errors
 
-2. **"401 Unauthorized" Errors**:
-   - Instagram occasionally blocks automated tools; this is common and expected
-   - Consider using a different Instagram account
-   - Wait a few hours before trying again (Instagram rate limits can be temporary)
+1. **401 Unauthorized Error**: Instagram is actively blocking the connection.
+   - **Solution**: Try using different Instagram credentials in your .env file.
+   - **Alternative**: Download the video manually and upload it directly.
 
-3. **"Failed to Download" Errors**:
-   - Verify the post URL is correct and accessible (test by opening it in a browser)
-   - Check if the post is from a private account
-   - Instagram's API changes frequently, so the instaloader library may need updates:
-     ```bash
-     pip install -U instaloader
-     ```
+2. **"Could not find window._sharedData" Error**: Instagram has changed their page structure.
+   - **Solution**: Wait for a library update or use the manual upload option.
 
-4. **Alternative Solutions**:
-   - If Instagram integration is critical, consider implementing a browser-based solution with Selenium
-   - Implement a fallback mechanism for users to manually upload videos
+3. **No media found after download**: The content might be private or not accessible.
+   - **Solution**: Ensure you're using credentials that have access to the content.
+
+#### Mitigation Strategies
+
+- Increase `INSTAGRAM_MAX_RETRIES` and `INSTAGRAM_RETRY_DELAY` in your .env file
+- Use an Instagram account with fewer restrictions
+- If Instagram integration is critical, consider implementing a browser automation solution (like Selenium)
+
+#### Note on Instagram's Policies
+
+Instagram actively works to prevent automated access to their platform. The application's ability to download content may be affected by:
+- Instagram's frequent API and website changes
+- Rate limiting and blocking of automated requests
+- Login challenges and captchas when using automated tools
 
 ### Running the Backend Server (without Docker)
 
@@ -192,6 +199,10 @@ Set the following environment variables in your `.env` file:
 |----------|-------------|---------|
 | `OPENAI_API_KEY` | Your OpenAI API key | required |
 | `GOOGLE_API_KEY` | Your Google API key (if applicable) | optional |
+| `INSTAGRAM_USERNAME` | Instagram username for downloading content | optional |
+| `INSTAGRAM_PASSWORD` | Instagram password for downloading content | optional |
+| `INSTAGRAM_MAX_RETRIES` | Maximum number of retry attempts for Instagram | 3 |
+| `INSTAGRAM_RETRY_DELAY` | Delay between retry attempts in seconds | 2 |
 | `ALLOWED_ORIGINS` | Comma-separated list of allowed origins for CORS | * |
 | `FACT_CHECK_MODEL` | OpenAI model for fact checking | chatgpt-4o-latest |
 | `IMAGE_ANALYSIS_MODEL` | OpenAI model for image analysis | gpt-4-vision-preview |
@@ -206,7 +217,6 @@ Set the following environment variables in your `.env` file:
 | `/upload` | POST | Upload a video for processing |
 | `/transcribe` | POST | Transcribe an already uploaded video |
 | `/fact-check` | POST | Perform fact-checking on a transcription |
-| _[Add more endpoints as needed]_ |
 
 ## Contributing
 
