@@ -14,7 +14,10 @@ import {
   ShareIcon,
   ArrowDownTrayIcon,
   ChevronUpIcon,
-  ChevronDownIcon
+  ChevronDownIcon,
+  AcademicCapIcon,
+  MicrophoneIcon,
+  GlobeAltIcon
 } from '@heroicons/react/24/outline';
 import DOMPurify from 'dompurify';
 
@@ -82,45 +85,138 @@ const FactCheckResults = ({ htmlContent, onShare, onExport }) => {
 
   const getResultColor = (result) => {
     result = result.toLowerCase();
-    if (result.includes('accurate') || result === 'true') return 'bg-green-100 text-green-800 border-green-200';
-    if (result.includes('inaccurate') || result === 'false') return 'bg-red-100 text-red-800 border-red-200';
-    if (result.includes('mixed')) return 'bg-yellow-100 text-yellow-800 border-yellow-200';
-    if (result.includes('inconclusive')) return 'bg-gray-100 text-gray-800 border-gray-200';
+    if (result === 'accurate' || result === 'true') return 'bg-green-100 text-green-800 border-green-200';
+    if (result === 'mostly true') return 'bg-green-50 text-green-700 border-green-100';
+    if (result === 'mixed') return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+    if (result === 'consensus-based') return 'bg-blue-100 text-blue-800 border-blue-200';
+    if (result === 'mostly false') return 'bg-red-50 text-red-700 border-red-100';
+    if (result === 'false') return 'bg-red-100 text-red-800 border-red-200';
+    if (result === 'unverified') return 'bg-gray-100 text-gray-800 border-gray-200';
+    if (result === 'error') return 'bg-red-50 text-red-800 border-red-200';
+    if (result === 'ai-generated') return 'bg-purple-100 text-purple-800 border-purple-200';
     return 'bg-blue-100 text-blue-800 border-blue-200';
+  };
+  
+  // Binary truth evaluation - simplified for user comprehension
+  const getBinaryTruthColor = (accuracy) => {
+    accuracy = accuracy.toLowerCase();
+    
+    // Green for anything with some degree of truth
+    if (accuracy.includes('accurate') || 
+        accuracy.includes('mostly true') || 
+        accuracy.includes('partly accurate') ||
+        accuracy.includes('expert consensus') ||
+        accuracy.includes('based on expert')) {
+      return 'bg-green-100 text-green-700 border-green-200';
+    }
+    
+    // Red for false claims and conspiracies
+    if (accuracy.includes('false') || 
+        accuracy.includes('conspiracy') || 
+        accuracy.includes('misleading')) {
+      return 'bg-red-100 text-red-700 border-red-200';
+    }
+    
+    // Gray for unverified or unknown
+    return 'bg-gray-100 text-gray-700 border-gray-200';
   };
   
   const getAccuracyIcon = (accuracy) => {
     accuracy = accuracy.toLowerCase();
-    if (accuracy.includes('accurate') || accuracy === 'true') 
+    if (accuracy.includes('accurate') && !accuracy.includes('mostly') && !accuracy.includes('partly')) 
       return <CheckIcon className="w-5 h-5 text-green-500" />;
-    if (accuracy.includes('inaccurate') || accuracy === 'false') 
-      return <XMarkIcon className="w-5 h-5 text-red-500" />;
-    if (accuracy.includes('partly')) 
+    if (accuracy.includes('mostly true')) 
+      return <CheckIcon className="w-5 h-5 text-green-400" />;
+    if (accuracy.includes('partly accurate')) 
       return <ExclamationCircleIcon className="w-5 h-5 text-yellow-500" />;
+    if (accuracy.includes('mostly false')) 
+      return <XMarkIcon className="w-5 h-5 text-red-400" />;
+    if (accuracy.includes('false') && !accuracy.includes('mostly')) 
+      return <XMarkIcon className="w-5 h-5 text-red-500" />;
+    if (accuracy.includes('expert consensus') || accuracy.includes('based on expert')) 
+      return <AcademicCapIcon className="w-5 h-5 text-blue-500" />;
     if (accuracy.includes('unable') || accuracy.includes('don\'t know')) 
       return <QuestionMarkCircleIcon className="w-5 h-5 text-gray-500" />;
     return <InformationCircleIcon className="w-5 h-5 text-blue-500" />;
+  };
+
+  // Binary truth icon - simplified for user comprehension
+  const getBinaryTruthIcon = (accuracy) => {
+    accuracy = accuracy.toLowerCase();
+    
+    // Checkmark for anything with some degree of truth
+    if (accuracy.includes('accurate') || 
+        accuracy.includes('mostly true') || 
+        accuracy.includes('partly accurate') ||
+        accuracy.includes('expert consensus') ||
+        accuracy.includes('based on expert')) {
+      return <CheckIcon className="w-5 h-5 text-green-500" />;
+    }
+    
+    // X for false claims and conspiracies
+    if (accuracy.includes('false') || 
+        accuracy.includes('conspiracy') || 
+        accuracy.includes('misleading')) {
+      return <XMarkIcon className="w-5 h-5 text-red-500" />;
+    }
+    
+    // Question mark for unverified or unknown
+    return <QuestionMarkCircleIcon className="w-5 h-5 text-gray-500" />;
+  };
+
+  const getAccuracyClass = (accuracy) => {
+    accuracy = accuracy.toLowerCase();
+    if (accuracy.includes('accurate') && !accuracy.includes('mostly') && !accuracy.includes('partly'))
+      return 'bg-green-100 text-green-800';
+    if (accuracy.includes('mostly true'))
+      return 'bg-green-50 text-green-700';
+    if (accuracy.includes('partly accurate'))
+      return 'bg-yellow-100 text-yellow-800';
+    if (accuracy.includes('mostly false'))
+      return 'bg-red-50 text-red-700';
+    if (accuracy.includes('false') && !accuracy.includes('mostly'))
+      return 'bg-red-100 text-red-800';
+    if (accuracy.includes('expert consensus') || accuracy.includes('based on expert'))
+      return 'bg-blue-100 text-blue-800';
+    if (accuracy.includes('unable') || accuracy.includes('don\'t know'))
+      return 'bg-gray-100 text-gray-800';
+    return 'bg-gray-100 text-gray-800';
+  };
+
+  const getResultIcon = (result) => {
+    result = result.toLowerCase();
+    if (result === 'accurate' || result === 'true')
+      return <CheckCircleIcon className="h-10 w-10 text-green-500" />;
+    if (result === 'mostly true')
+      return <CheckCircleIcon className="h-10 w-10 text-green-400" />;
+    if (result === 'mixed')
+      return <ExclamationCircleIcon className="h-10 w-10 text-yellow-500" />;
+    if (result === 'consensus-based')
+      return <AcademicCapIcon className="h-10 w-10 text-blue-500" />;
+    if (result === 'mostly false')
+      return <XMarkIcon className="h-10 w-10 text-red-400" />;
+    if (result === 'false')
+      return <XMarkIcon className="h-10 w-10 text-red-500" />;
+    if (result === 'unverified')
+      return <QuestionMarkCircleIcon className="h-10 w-10 text-gray-500" />;
+    if (result === 'error')
+      return <ExclamationCircleIcon className="h-10 w-10 text-red-500" />;
+    if (result === 'ai-generated')
+      return <InformationCircleIcon className="h-10 w-10 text-purple-500" />;
+    return <QuestionMarkCircleIcon className="h-10 w-10 text-gray-500" />;
   };
 
   return (
     <div className="space-y-6 animate-fadeIn">
       {/* Result Summary Card */}
       <div className={`p-6 rounded-xl shadow-sm border ${getResultColor(factData.result)}`}>
-        <div className="flex items-start justify-between">
-          <div className="flex items-start">
-            <div className="flex-shrink-0">
-              {factData.result.toLowerCase().includes('accurate') ? (
-                <CheckCircleIcon className="h-8 w-8 text-green-500" />
-              ) : factData.result.toLowerCase().includes('inaccurate') ? (
-                <XMarkIcon className="h-8 w-8 text-red-500" />
-              ) : factData.result.toLowerCase().includes('mixed') ? (
-                <ExclamationCircleIcon className="h-8 w-8 text-yellow-500" />
-              ) : (
-                <QuestionMarkCircleIcon className="h-8 w-8 text-gray-500" />
-              )}
+        <div className="flex flex-col md:flex-row items-center justify-between">
+          <div className="flex flex-col md:flex-row items-center text-center md:text-left mb-4 md:mb-0">
+            <div className="flex-shrink-0 mb-3 md:mb-0">
+              {getResultIcon(factData.result)}
             </div>
-            <div className="ml-4">
-              <h2 className="text-2xl font-bold">{factData.result}</h2>
+            <div className="md:ml-4">
+              <h2 className="text-3xl font-bold tracking-tight">{factData.result}</h2>
               <p className="mt-2 text-gray-700">{factData.conclusion}</p>
             </div>
           </div>
@@ -148,20 +244,15 @@ const FactCheckResults = ({ htmlContent, onShare, onExport }) => {
         <h3 className="text-xl font-semibold mb-4">Claims Analysis</h3>
         <div className="space-y-4">
           {factData.findings.map((finding, index) => (
-            <div key={index} className="p-4 border border-gray-100 rounded-lg hover:bg-gray-50 transition-colors">
+            <div key={index} className={`p-4 border rounded-lg hover:bg-gray-50 transition-colors ${getBinaryTruthColor(finding.accuracy)}`}>
               <div className="flex items-start">
                 <div className="flex-shrink-0 mt-1">
-                  {getAccuracyIcon(finding.accuracy)}
+                  {getBinaryTruthIcon(finding.accuracy)}
                 </div>
                 <div className="ml-3 w-full">
                   <div className="flex justify-between">
                     <p className="font-medium text-gray-900">{finding.claimText}</p>
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                      finding.accuracy.toLowerCase().includes('accurate') ? 'bg-green-100 text-green-800' :
-                      finding.accuracy.toLowerCase().includes('inaccurate') ? 'bg-red-100 text-red-800' :
-                      finding.accuracy.toLowerCase().includes('partly') ? 'bg-yellow-100 text-yellow-800' :
-                      'bg-gray-100 text-gray-800'
-                    }`}>
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getAccuracyClass(finding.accuracy)}`}>
                       {finding.accuracy}
                     </span>
                   </div>
@@ -174,7 +265,7 @@ const FactCheckResults = ({ htmlContent, onShare, onExport }) => {
       </div>
       
       {/* Sources */}
-      {factData.sources.length > 0 && (
+      {factData.sources && factData.sources.length > 0 && (
         <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
           <h3 className="text-xl font-semibold mb-4">Sources</h3>
           <ul className="space-y-2">
@@ -202,6 +293,43 @@ const FactCheckResults = ({ htmlContent, onShare, onExport }) => {
   );
 };
 
+// Add ModelInfo component
+const ModelInfo = ({ models }) => {
+  return (
+    <div className="mt-4 text-xs text-gray-600 border-t pt-3 border-gray-200">
+      <p className="font-medium text-gray-700 mb-1">AI Models Used:</p>
+      <div className="flex flex-wrap gap-2">
+        {models.transcription && (
+          <span className="inline-flex items-center px-2.5 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-100">
+            <MicrophoneIcon className="h-3 w-3 mr-1" />
+            Transcription: {models.transcription.name}
+          </span>
+        )}
+        
+        {models.fact_check && (
+          <span className="inline-flex items-center px-2.5 py-0.5 rounded-md bg-green-50 text-green-700 border border-green-100">
+            <CheckCircleIcon className="h-3 w-3 mr-1" />
+            Fact Check: {models.fact_check.name}
+            {models.fact_check.type && models.fact_check.type.includes("Web Search") && (
+              <span className="ml-1 inline-flex items-center px-1.5 py-0.5 rounded-md bg-blue-100 text-blue-700 text-xs">
+                <GlobeAltIcon className="h-2.5 w-2.5 mr-0.5" />
+                Web
+              </span>
+            )}
+          </span>
+        )}
+        
+        {models.image_analysis && (
+          <span className="inline-flex items-center px-2.5 py-0.5 rounded-md bg-purple-50 text-purple-700 border border-purple-100">
+            <PhotoIcon className="h-3 w-3 mr-1" />
+            Image Analysis: {models.image_analysis.name}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+};
+
 function App() {
   const [file, setFile] = useState(null);
   const [instagramLink, setInstagramLink] = useState('');
@@ -213,6 +341,7 @@ function App() {
   const [shareModalOpen, setShareModalOpen] = useState(false);
   const factCheckContentRef = useRef(null);
   const [transcriptionOpen, setTranscriptionOpen] = useState(false);
+  const [modelInfo, setModelInfo] = useState(null);
 
   const handleFile = useCallback((selectedFile) => {
     if (selectedFile && selectedFile.size > MAX_UPLOAD_SIZE * 1024 * 1024) {
@@ -263,6 +392,11 @@ function App() {
       setStage(3);
       setResult(response.data);
       
+      // Store model information if available in the response
+      if (response.data.models) {
+        setModelInfo(response.data.models);
+      }
+      
       // No auto-scrolling - let user navigate naturally
     } catch (error) {
       console.error('API Error:', error.response?.data);
@@ -275,10 +409,13 @@ function App() {
   const getFactCheckStatus = useCallback((factCheck) => {
     if (!factCheck) return { status: 'UNKNOWN', color: 'text-yellow-400' };
     const lowerCaseCheck = factCheck.toLowerCase();
-    if (lowerCaseCheck.includes('mostly accurate')) return { status: 'MOSTLY ACCURATE', color: 'text-green-400' };
-    if (lowerCaseCheck.includes('mostly inaccurate')) return { status: 'MOSTLY INACCURATE', color: 'text-red-400' };
+    if (lowerCaseCheck.includes('accurate')) return { status: 'ACCURATE', color: 'text-green-500' };
+    if (lowerCaseCheck.includes('mostly true')) return { status: 'MOSTLY TRUE', color: 'text-green-400' };
     if (lowerCaseCheck.includes('mixed')) return { status: 'MIXED', color: 'text-yellow-400' };
-    if (lowerCaseCheck.includes('inconclusive')) return { status: 'INCONCLUSIVE', color: 'text-gray-400' };
+    if (lowerCaseCheck.includes('mostly false')) return { status: 'MOSTLY FALSE', color: 'text-red-400' };
+    if (lowerCaseCheck.includes('false') && !lowerCaseCheck.includes('mostly')) return { status: 'FALSE', color: 'text-red-500' };
+    if (lowerCaseCheck.includes('unverified')) return { status: 'UNVERIFIED', color: 'text-gray-400' };
+    if (lowerCaseCheck.includes('ai-generated')) return { status: 'AI-GENERATED', color: 'text-purple-500' };
     return { status: 'UNKNOWN', color: 'text-yellow-400' };
   }, []);
 
@@ -553,6 +690,9 @@ function App() {
                       </p>
                     </div>
                   </div>
+                  
+                  {/* Add ModelInfo component here */}
+                  {modelInfo && <ModelInfo models={modelInfo} />}
                 </div>
 
                 <div ref={factCheckContentRef}>
@@ -626,6 +766,23 @@ function App() {
       <div className="text-center mt-8 text-sm text-gray-500">
         <p>This tool attempts to verify content but may not catch all misinformation.</p>
         <p>Always cross-check important information with multiple reliable sources.</p>
+        {modelInfo && (
+          <div className="mt-2 text-xs">
+            <p>
+              Powered by OpenAI models
+            </p>
+            {modelInfo.fact_check && modelInfo.fact_check.type && modelInfo.fact_check.type.includes("Web Search") && (
+              <p className="mt-1 text-blue-600">
+                <span className="inline-flex items-center">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9" />
+                  </svg>
+                  Using real-time web search for fact verification
+                </span>
+              </p>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

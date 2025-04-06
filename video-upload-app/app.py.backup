@@ -22,31 +22,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Load environment variables
-env_path = os.path.join(os.path.dirname(__file__), ".env")
-logger.info(f"Loading environment from: {env_path}")
-
-# Load the API key separately to guarantee we have the correct one
-api_key = None
-try:
-    with open(env_path, 'r') as env_file:
-        for line in env_file:
-            if line.startswith('OPENAI_API_KEY='):
-                api_key = line.strip().split('=', 1)[1]
-                # Remove any quotes if present
-                api_key = api_key.strip('\'"')
-                break
-    
-    if api_key:
-        masked_key = api_key[:10] + "..." + api_key[-5:]
-        logger.info(f"Using API key from .env file: {masked_key}")
-        # Set the environment variable explicitly
-        os.environ['OPENAI_API_KEY'] = api_key
-    else:
-        logger.error("No OpenAI API key found in .env file!")
-except Exception as e:
-    logger.error(f"Error reading API key from .env file: {str(e)}")
-
-# Now load the rest of the environment variables
+env_path = os.getenv('ENV_FILE', os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env'))
 load_dotenv(dotenv_path=env_path)
 
 # ... (other imports and setup code)
@@ -86,15 +62,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Create OpenAI client with the correct API key
-client = OpenAI(api_key=api_key)
-
-# Log API key (redacted) for debugging
-if api_key:
-    masked_key = api_key[:10] + "..." + api_key[-5:]
-    logger.info(f"Using OpenAI API key: {masked_key}")
-else:
-    logger.error("No OpenAI API key found in environment variables or .env file!")
+client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 
 UPLOAD_DIRECTORY = os.path.join(os.path.dirname(__file__), "uploads")
 os.makedirs(UPLOAD_DIRECTORY, exist_ok=True)
