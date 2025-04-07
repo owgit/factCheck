@@ -1,4 +1,4 @@
-# Fact Check
+# AI-Powered Fact Check Tool | Video & Instagram Content Verification
 
 [![Python](https://img.shields.io/badge/Python-3.9%2B-blue)](https://www.python.org/)
 [![OpenAI](https://img.shields.io/badge/OpenAI-API-green)](https://openai.com/)
@@ -6,7 +6,20 @@
 [![React](https://img.shields.io/badge/React-Frontend-61DAFB)](https://reactjs.org/)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED)](https://www.docker.com/)
 
-A video fact-checking application for Instagram that automatically transcribes and verifies factual claims in uploaded videos using OpenAI's advanced AI models.
+## Automated Video Verification & Fact-Checking Platform
+
+An AI-powered fact-checking application that automatically transcribes, analyzes, and verifies claims from videos, Instagram content, and text. Using OpenAI's GPT-4o and Whisper models, this tool helps combat misinformation by providing evidence-based verification with accurate source references.
+
+### Key Features
+
+- 🎬 **Multi-Source Verification**: Process videos, Instagram posts, and free text input
+- 🔊 **AI Transcription**: Convert speech to text using OpenAI's Whisper model
+- ✅ **Advanced Fact Checking**: Verify claims using OpenAI's GPT-4o with web search capabilities
+- 🔍 **Claim Detection**: Automatically extract and analyze factual statements
+- 📱 **User-Friendly Interface**: Intuitive tabbed design for different input methods
+- 📊 **Detailed Verification Reports**: Comprehensive fact-check results with reliability scores and sources
+- 🌐 **Multilingual Support**: Automatically detects input language and responds accordingly
+- 📑 **Web Search Integration**: Cross-references claims with online information sources
 
 ## Features
 

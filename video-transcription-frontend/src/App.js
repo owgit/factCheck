@@ -617,10 +617,10 @@ function App() {
       <div className="max-w-4xl mx-auto">
         <div className="text-center mb-12">
           <h1 className="text-4xl font-bold text-gray-800 tracking-tight">
-            Fact Check Assistant
+            AI-Powered Fact Check & Verification
           </h1>
           <p className="mt-3 text-xl text-gray-600">
-            Upload a video or image, paste an Instagram link, or enter text to fact-check
+            Verify claims in videos, Instagram posts, and text with advanced AI fact-checking
           </p>
         </div>
 

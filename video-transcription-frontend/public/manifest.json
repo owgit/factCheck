@@ -1,6 +1,6 @@
 {
     "short_name": "FactCheck",
-    "name": "Fact Check App",
+    "name": "Fact Check - AI-Powered Content Verification Tool",
     "icons": [
         {
             "src": "favicon_16x16.png",
@@ -41,5 +41,6 @@
     "start_url": ".",
     "display": "standalone",
     "theme_color": "#000000",
-    "background_color": "#ffffff"
+    "background_color": "#ffffff",
+    "description": "AI-powered fact-checking tool for verifying claims in videos, Instagram posts, and text. Combat misinformation with evidence-based verification."
 }
