@@ -64,13 +64,18 @@ INSTAGRAM_RETRY_DELAY = int(os.getenv('INSTAGRAM_RETRY_DELAY', '2'))
 
 # Get model names from environment variables with defaults
 FACT_CHECK_MODEL = os.getenv('FACT_CHECK_MODEL', 'gpt-4o-mini')
-IMAGE_ANALYSIS_MODEL = os.getenv('IMAGE_ANALYSIS_MODEL', 'gpt-4-vision-preview')
+IMAGE_ANALYSIS_MODEL = os.getenv('IMAGE_ANALYSIS_MODEL', 'gpt-4o-mini')
 TRANSCRIPTION_MODEL = os.getenv('TRANSCRIPTION_MODEL', 'whisper-1')
 
 # Fact checking reliability settings
 FACT_CHECK_MAX_RETRIES = int(os.getenv('FACT_CHECK_MAX_RETRIES', '3'))
 FACT_CHECK_RETRY_DELAY = int(os.getenv('FACT_CHECK_RETRY_DELAY', '2'))
 FACT_CHECK_TEMPERATURE = float(os.getenv('FACT_CHECK_TEMPERATURE', '0.2'))
+
+# Web search configuration for fact checking
+USE_WEB_SEARCH = os.getenv('USE_WEB_SEARCH', 'true').lower() in ('true', 'yes', '1')
+WEB_SEARCH_MODEL = os.getenv('WEB_SEARCH_MODEL', 'gpt-4o-search-preview')
+WEB_SEARCH_CONTEXT_SIZE = os.getenv('WEB_SEARCH_CONTEXT_SIZE', 'medium')
 
 # Instagram download method configuration
 USE_YTDLP = os.getenv('USE_YTDLP', 'true').lower() in ('true', 'yes', '1')
@@ -113,21 +118,24 @@ def cleanup_old_files():
 def perform_fact_check(text):
     prompt = f"""
     Perform a thorough fact-check on the following text. Follow these steps:
-    1. Identify the main claims in the text (maximum 5 most significant claims).
-    2. For each claim:
+    1. First, identify the language of the input text and ensure your response is in that same language.
+    2. Identify the main claims in the text (maximum 5 most significant claims).
+    3. For each claim:
        a. Search for reliable sources to verify the claim.
        b. If no reliable sources are found, state "Unable to verify" for that claim.
        c. If reliable sources are found, assess the claim's accuracy using specific criteria.
        d. Provide a brief explanation for your assessment with direct references to sources.
-    3. For each claim, rate accuracy on this scale: 
+    4. For each claim, rate accuracy on this scale: 
        - Accurate (claim fully supported by reliable sources)
        - Mostly Accurate (claim mostly supported but with minor inaccuracies)
        - Partly Accurate (claim contains a mix of accurate and inaccurate elements)
        - Mostly Inaccurate (claim contains more inaccuracies than accuracies)
        - Inaccurate (claim contradicted by reliable sources)
        - Unable to verify (insufficient reliable information available)
-    4. Analyze the overall accuracy of the text based on the verified claims.
-    5. If you're unsure about any aspect, clearly state "I don't know" for that part.
+    5. Analyze the overall accuracy of the text based on the verified claims.
+    6. If you're unsure about any aspect, clearly state "I don't know" for that part.
+
+    IMPORTANT: Your entire response must be in the same language as the input text.
 
     IMPORTANT SOURCE GUIDELINES:
     - Only use authoritative, established sources (government agencies, major news outlets, academic journals, established fact-checking organizations).
@@ -142,7 +150,7 @@ def perform_fact_check(text):
     {text}
     </text_to_check>
 
-    Respond with HTML in this format and language from the context:
+    Respond with HTML in this format and in the same language as the input text:
     <div class="fact-check">
         <h2 class="result">[INCONCLUSIVE, MOSTLY ACCURATE, MOSTLY INACCURATE, or MIXED]</h2>
         <section class="analysis">
@@ -180,7 +188,7 @@ def perform_fact_check(text):
             response = client.chat.completions.create(
                 model=FACT_CHECK_MODEL,
                 messages=[
-                    {"role": "system", "content": "You are a meticulous fact-checker with expertise in verification and source evaluation. Always prioritize accuracy over completeness. If you're unsure about any information, clearly state 'I don't know' or 'Unable to verify'. Only use highly reliable sources for verification. Be extremely careful with URLs - only include stable, permanent links from established websites. When in doubt about a URL's permanence, provide the source description without a URL. Use the same language as the content. Never fabricate sources or information - if information cannot be verified, admit this limitation."},
+                    {"role": "system", "content": "You are a meticulous fact-checker with expertise in verification and source evaluation. Always prioritize accuracy over completeness. If you're unsure about any information, clearly state 'I don't know' or 'Unable to verify'. Only use highly reliable sources for verification. Be extremely careful with URLs - only include stable, permanent links from established websites. When in doubt about a URL's permanence, provide the source description without a URL. Detect and respond in the same language as the input content. Your response language should match the language of the content you're fact-checking. Never fabricate sources or information - if information cannot be verified, admit this limitation."},
                     {"role": "user", "content": prompt}
                 ],
                 max_tokens=4096,
@@ -206,6 +214,22 @@ def perform_fact_check(text):
                     time.sleep(retry_delay)
                     continue
             
+            # Add AI model information to the fact-check result
+            if "</div>" in fact_check_result:
+                # Add models used section before the closing div
+                models_section = f"""
+                <section class="ai-models">
+                    <h3>AI Models Used:</h3>
+                    <ul>
+                        <li><strong>Transcription:</strong> {TRANSCRIPTION_MODEL}</li>
+                        <li><strong>Fact Checking:</strong> {FACT_CHECK_MODEL}</li>
+                        {f'<li><strong>Web Search:</strong> {WEB_SEARCH_MODEL}</li>' if USE_WEB_SEARCH else ''}
+                    </ul>
+                </section>
+                """
+                
+                fact_check_result = fact_check_result.replace("</div>", f"{models_section}</div>")
+            
             return fact_check_result
             
         except Exception as e:
@@ -220,6 +244,19 @@ def perform_fact_check(text):
 
 def generate_error_fact_check(error_message):
     """Generate a properly formatted error message for fact check failures"""
+    
+    # AI models used section for inclusion in the error message
+    models_section = f"""
+    <section class="ai-models">
+        <h3>AI Models Used:</h3>
+        <ul>
+            <li><strong>Transcription:</strong> {TRANSCRIPTION_MODEL}</li>
+            <li><strong>Fact Checking:</strong> {FACT_CHECK_MODEL}</li>
+            {f'<li><strong>Web Search:</strong> {WEB_SEARCH_MODEL}</li>' if USE_WEB_SEARCH else ''}
+        </ul>
+    </section>
+    """
+    
     return f"""
     <div class="fact-check">
         <h2 class="result">ERROR</h2>
@@ -238,8 +275,91 @@ def generate_error_fact_check(error_message):
                 </li>
             </ul>
         </section>
+        {models_section}
     </div>
     """
+
+def perform_web_search(search_query):
+    """
+    Perform a web search using OpenAI's web search capabilities.
+    
+    Args:
+        search_query: The query to search for
+        
+    Returns:
+        JSON response with search results
+    """
+    if not USE_WEB_SEARCH:
+        logger.info("Web search is disabled")
+        return None
+    
+    logger.info(f"Performing web search for: {search_query}")
+    
+    try:
+        # Define a structured response prompt
+        structured_prompt = f"""
+        Search the web for information to answer this question:
+
+        "{search_query}"
+
+        Provide a concise but informative answer with specific facts. Include at least 2-3 reputable sources with links where the information was found.
+
+        Format your response in this structure:
+        1. Direct answer to the question (2-3 sentences)
+        2. Key supporting facts (bullet points)
+        3. Sources (numbered list with links)
+        """
+        
+        # Use OpenAI's web search capabilities with the appropriate format for the model
+        if WEB_SEARCH_MODEL == "gpt-4o-search-preview":
+            # Format for gpt-4o-search-preview which has built-in web search
+            response = client.chat.completions.create(
+                model=WEB_SEARCH_MODEL,
+                messages=[
+                    {"role": "system", "content": "You are a skilled fact-checker and web researcher. Your role is to provide accurate, well-sourced answers to factual questions based on current web information. Always cite your sources with links and provide specific facts rather than general statements."},
+                    {"role": "user", "content": structured_prompt}
+                ]
+            )
+        else:
+            # Format for models that use explicit function calling for web search
+            response = client.chat.completions.create(
+                model=WEB_SEARCH_MODEL,
+                messages=[
+                    {"role": "system", "content": "You are a skilled fact-checker and web researcher. Your role is to provide accurate, well-sourced answers to factual questions based on current web information. Always cite your sources with links and provide specific facts rather than general statements."},
+                    {"role": "user", "content": structured_prompt}
+                ],
+                temperature=0.2,
+                tools=[{
+                    "type": "function",
+                    "function": {
+                        "name": "search_web",
+                        "description": "Search the web for real-time information",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {},
+                            "required": []
+                        }
+                    }
+                }],
+                tool_choice={"type": "function", "function": {"name": "search_web"}}
+            )
+        
+        return {
+            "question": search_query,
+            "answer": response.choices[0].message.content,
+            "model_used": WEB_SEARCH_MODEL,
+            "timestamp": datetime.now().isoformat()
+        }
+    
+    except Exception as e:
+        logger.error(f"Error in web search: {str(e)}")
+        return {
+            "question": search_query,
+            "answer": f"Error performing web search: {str(e)}",
+            "model_used": WEB_SEARCH_MODEL,
+            "error": True,
+            "timestamp": datetime.now().isoformat()
+        }
 
 def analyze_image(image_path):
     with open(image_path, "rb") as image_file:
@@ -247,22 +367,26 @@ def analyze_image(image_path):
 
     prompt = f"""
     Analyze the given image with a focus on fact-checking and identifying potential misinformation. Follow these steps:
-    1. Describe the main elements and context of the image briefly.
-    2. Identify the main claims (textual or visual) - maximum 5 most significant claims.
-    3. For each claim:
+    1. First, identify the language of any text visible in the image. Your entire response should be in this language.
+       If no text is visible, respond in the language of the accompanying query or default to English.
+    2. Describe the main elements and context of the image briefly.
+    3. Identify the main claims (textual or visual) - maximum 5 most significant claims.
+    4. For each claim:
        a. Search for reliable sources to verify the claim.
        b. If no reliable sources are found, state "Unable to verify" for that claim.
        c. If reliable sources are found, assess the claim's accuracy using specific criteria.
        d. Provide a brief explanation for your assessment with direct references to sources.
-    4. For each claim, rate accuracy on this scale: 
+    5. For each claim, rate accuracy on this scale: 
        - Accurate (claim fully supported by reliable sources)
        - Mostly Accurate (claim mostly supported but with minor inaccuracies)
        - Partly Accurate (claim contains a mix of accurate and inaccurate elements)
        - Mostly Inaccurate (claim contains more inaccuracies than accuracies)
        - Inaccurate (claim contradicted by reliable sources)
        - Unable to verify (insufficient reliable information available)
-    5. If you're unsure about any aspect, clearly state "I don't know" for that part.
-    6. Determine if image appears to be AI-generated or manipulated in any way.
+    6. If you're unsure about any aspect, clearly state "I don't know" for that part.
+    7. Determine if image appears to be AI-generated or manipulated in any way.
+
+    IMPORTANT: Your entire response must be in the same language as any text visible in the image.
 
     IMPORTANT SOURCE GUIDELINES:
     - Only use authoritative, established sources (government agencies, major news outlets, academic journals, established fact-checking organizations).
@@ -272,7 +396,7 @@ def analyze_image(image_path):
     - Include at least the source name, publication date, and title when referring to sources.
     - Never fabricate sources - if you cannot find relevant reliable sources, state "Unable to verify".
 
-    Respond with HTML in this format and language from the context:
+    Respond with HTML in this format and in the same language as any text in the image:
     <div class="fact-check">
         <h2 class="result">[INCONCLUSIVE, MOSTLY ACCURATE, MOSTLY INACCURATE, MIXED, or AI-GENERATED]</h2>
         <section class="analysis">
@@ -310,7 +434,7 @@ def analyze_image(image_path):
             response = client.chat.completions.create(
                 model=IMAGE_ANALYSIS_MODEL,
                 messages=[
-                    {"role": "system", "content": "You are a meticulous image fact-checker with expertise in verification, digital forensics, and source evaluation. Analyze images for factual claims and potential misinformation. Prioritize accuracy over completeness. If you're unsure about any information, clearly state 'Unable to verify'. Be extremely careful with URLs - only include stable, permanent links from established websites. When in doubt about a URL's permanence, provide the source description without a URL. Use the same language as the content. Check for signs of AI-generation or manipulation in images. Never fabricate sources or information - if information cannot be verified, admit this limitation."},
+                    {"role": "system", "content": "You are a meticulous image fact-checker with expertise in verification, digital forensics, and source evaluation. Analyze images for factual claims and potential misinformation. Prioritize accuracy over completeness. If you're unsure about any information, clearly state 'Unable to verify'. Be extremely careful with URLs - only include stable, permanent links from established websites. When in doubt about a URL's permanence, provide the source description without a URL. Detect and respond in the same language as the content shown in the image. If there is text in the image, your response language should match that language. If no text is visible, respond in the language of the accompanying query or default to English. Check for signs of AI-generation or manipulation in images. Never fabricate sources or information - if information cannot be verified, admit this limitation."},
                     {"role": "user", "content": [
                         {"type": "text", "text": prompt},
                         {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
@@ -339,7 +463,93 @@ def analyze_image(image_path):
                     time.sleep(retry_delay)
                     continue
             
-            return analysis_result
+            # Add AI model information to the image analysis result
+            if "</div>" in analysis_result:
+                # Add models used section before the closing div
+                models_section = f"""
+                <section class="ai-models">
+                    <h3>AI Models Used:</h3>
+                    <ul>
+                        <li><strong>Image Analysis:</strong> {IMAGE_ANALYSIS_MODEL}</li>
+                        {f'<li><strong>Web Search:</strong> {WEB_SEARCH_MODEL}</li>' if USE_WEB_SEARCH else ''}
+                    </ul>
+                </section>
+                """
+                
+                analysis_result = analysis_result.replace("</div>", f"{models_section}</div>")
+            
+            # If web search is enabled, extract claims and perform web search
+            web_search_results = None
+            if USE_WEB_SEARCH:
+                try:
+                    # Extract key factual claims from the image
+                    claims_prompt = """
+                    Based on this image, identify 5 specific factual claims that can be directly verified through web searches.
+                    Focus on extracting clear, concrete statements that appear in or can be inferred from the image.
+                    
+                    Format your response as a JSON object with a "claims" field containing an array of strings.
+                    Example: {"claims": ["The Eiffel Tower is 330 meters tall", "Barack Obama was the 44th President of the United States", etc.]}
+                    
+                    Important: Formulate each claim as a direct statement (not a question) that can be fact-checked.
+                    """
+                    
+                    claims_response = client.chat.completions.create(
+                        model=IMAGE_ANALYSIS_MODEL,
+                        messages=[
+                            {"role": "system", "content": "You are a skilled fact-checker who can identify specific, verifiable factual claims in images. Extract only clear, concrete claims that can be verified through web searches."},
+                            {"role": "user", "content": [
+                                {"type": "text", "text": claims_prompt},
+                                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
+                            ]}
+                        ],
+                        response_format={"type": "json_object"},
+                        max_tokens=500
+                    )
+                    
+                    claims_text = claims_response.choices[0].message.content.strip()
+                    logger.info(f"Generated claims from image: {claims_text}")
+                    
+                    # Parse the JSON response
+                    import json
+                    try:
+                        claims_obj = json.loads(claims_text)
+                        factual_claims = claims_obj.get("claims", [])
+                        if not factual_claims:
+                            logger.warning("No claims extracted from the response")
+                            if isinstance(claims_obj, list):
+                                factual_claims = claims_obj
+                    except json.JSONDecodeError as e:
+                        # Fallback in case of non-JSON response
+                        logger.warning(f"Failed to parse JSON response: {e}")
+                        # Try to extract claims using text processing
+                        import re
+                        claims_pattern = r'"([^"]+)"'
+                        factual_claims = re.findall(claims_pattern, claims_text)
+                        if not factual_claims:
+                            # Another fallback method
+                            claims_text = claims_text.replace("{", "").replace("}", "").replace("[", "").replace("]", "").replace("\"", "")
+                            lines = [line.strip() for line in claims_text.split("\n") if line.strip() and not line.strip().startswith('{') and not line.strip().startswith('}')]
+                            factual_claims = [line for line in lines if line]
+                    
+                    logger.info(f"Extracted {len(factual_claims)} claims for web search: {factual_claims}")
+                    
+                    # Perform web search for each claim
+                    web_search_results = []
+                    for claim in factual_claims[:5]:  # Limit to 5 claims
+                        search_result = perform_web_search(claim)
+                        if search_result:
+                            web_search_results.append(search_result)
+                    
+                    logger.info(f"Completed {len(web_search_results)} web searches")
+                
+                except Exception as e:
+                    logger.error(f"Error during web search extraction: {str(e)}")
+                    web_search_results = [{"error": str(e), "search_query": "Error extracting search queries"}]
+            
+            return {
+                "analysis_result": analysis_result,
+                "web_search_results": web_search_results
+            }
             
         except Exception as e:
             logger.error(f"Error in analyze_image (attempt {attempt+1}/{max_retries}): {str(e)}")
@@ -359,21 +569,104 @@ def process_video(video_path):
         with open(audio_path, "rb") as audio_file:
             transcription = client.audio.transcriptions.create(
                 model=TRANSCRIPTION_MODEL, 
-                file=audio_file
+                file=audio_file,
+                response_format="verbose_json"  # Get verbose response to access language info
             )
 
-        fact_check_html = perform_fact_check(transcription.text)
+        # Log detected language
+        detected_language = transcription.language
+        logger.info(f"Detected language: {detected_language}")
 
-        os.remove(video_path)
-        os.remove(audio_path)
+        # Use text from transcription
+        transcription_text = transcription.text
+
+        fact_check_html = perform_fact_check(transcription_text)
+        
+        # Perform web search if enabled
+        web_search_results = None
+        if USE_WEB_SEARCH:
+            try:
+                # Extract key factual claims from the transcription
+                claims_prompt = f"""
+                Based on this transcription, identify 5 specific factual claims that can be directly verified through web searches.
+                Focus on extracting clear, concrete statements that appear in the transcription.
+                
+                Format your response as a JSON object with a "claims" field containing an array of strings.
+                Example: {{"claims": ["The Eiffel Tower is 330 meters tall", "Barack Obama was the 44th President of the United States", etc.]}}
+                
+                Important: Formulate each claim as a direct statement (not a question) that can be fact-checked.
+                
+                Transcription:
+                {transcription_text[:2000]}  # Use first 2000 chars to keep context manageable
+                """
+                
+                claims_response = client.chat.completions.create(
+                    model=FACT_CHECK_MODEL,  # Use the same model as fact checking
+                    messages=[
+                        {"role": "system", "content": "You are a skilled fact-checker who can identify specific, verifiable factual claims in transcribed content. Extract only clear, concrete claims that can be verified through web searches."},
+                        {"role": "user", "content": claims_prompt}
+                    ],
+                    response_format={"type": "json_object"},
+                    max_tokens=500
+                )
+                
+                claims_text = claims_response.choices[0].message.content.strip()
+                logger.info(f"Generated claims from transcription: {claims_text}")
+                
+                # Parse the JSON response
+                import json
+                try:
+                    claims_obj = json.loads(claims_text)
+                    factual_claims = claims_obj.get("claims", [])
+                    if not factual_claims:
+                        logger.warning("No claims extracted from the response")
+                        if isinstance(claims_obj, list):
+                            factual_claims = claims_obj
+                except json.JSONDecodeError as e:
+                    # Fallback in case of non-JSON response
+                    logger.warning(f"Failed to parse JSON response: {e}")
+                    # Try to extract claims using text processing
+                    import re
+                    claims_pattern = r'"([^"]+)"'
+                    factual_claims = re.findall(claims_pattern, claims_text)
+                    if not factual_claims:
+                        # Another fallback method
+                        claims_text = claims_text.replace("{", "").replace("}", "").replace("[", "").replace("]", "").replace("\"", "")
+                        lines = [line.strip() for line in claims_text.split("\n") if line.strip() and not line.strip().startswith('{') and not line.strip().startswith('}')]
+                        factual_claims = [line for line in lines if line]
+                
+                logger.info(f"Extracted {len(factual_claims)} claims for web search: {factual_claims}")
+                
+                # Perform web search for each claim
+                web_search_results = []
+                for claim in factual_claims[:5]:  # Limit to 5 claims
+                    search_result = perform_web_search(claim)
+                    if search_result:
+                        web_search_results.append(search_result)
+                
+                logger.info(f"Completed {len(web_search_results)} web searches")
+            
+            except Exception as e:
+                logger.error(f"Error during web search extraction for video: {str(e)}")
+                web_search_results = [{"error": str(e), "search_query": "Error extracting search queries"}]
+
+        # Clean up files
+        if os.path.exists(video_path):
+            os.remove(video_path)
+        if os.path.exists(audio_path):
+            os.remove(audio_path)
 
         # Include model information in the response
         return JSONResponse(content={
-            "transcription": transcription.text,
+            "transcription": transcription_text,
             "fact_check_html": fact_check_html,
+            "detected_language": detected_language,
+            "web_search_results": web_search_results,
             "models": {
                 "transcription": TRANSCRIPTION_MODEL,
-                "fact_check": FACT_CHECK_MODEL
+                "fact_check": FACT_CHECK_MODEL,
+                "web_search": WEB_SEARCH_MODEL if USE_WEB_SEARCH else "Not used",
+                "web_search_enabled": USE_WEB_SEARCH
             }
         })
     except Exception as e:
@@ -925,11 +1218,23 @@ async def upload_file(file: UploadFile = File(None), url: str = Form(None), back
         if media_path.lower().endswith(('.mp4', '.mov', '.avi')):
             return process_video(media_path)
         elif media_path.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
-            image_analysis = analyze_image(media_path)
+            image_analysis_results = analyze_image(media_path)
+            
+            # Extract the components from the analysis results
+            analysis_result = image_analysis_results.get("analysis_result", "")
+            web_search_results = image_analysis_results.get("web_search_results", None)
+            
+            # Cleanup the media file after processing
+            if os.path.exists(media_path):
+                os.remove(media_path)
+            
             return JSONResponse(content={
-                "image_analysis": image_analysis,
+                "image_analysis": analysis_result,
+                "web_search_results": web_search_results,
                 "models": {
-                    "image_analysis": IMAGE_ANALYSIS_MODEL
+                    "image_analysis": IMAGE_ANALYSIS_MODEL,
+                    "web_search": WEB_SEARCH_MODEL if USE_WEB_SEARCH else "Not used",
+                    "web_search_enabled": USE_WEB_SEARCH
                 }
             })
         else:
@@ -961,6 +1266,19 @@ async def get_models():
                     "name": IMAGE_ANALYSIS_MODEL,
                     "type": "Vision",
                     "description": "Used to analyze images for factual claims"
+                },
+                "web_search": {
+                    "name": WEB_SEARCH_MODEL,
+                    "type": "Web Search",
+                    "description": "Used for real-time web search to verify claims",
+                    "enabled": USE_WEB_SEARCH,
+                    "context_size": WEB_SEARCH_CONTEXT_SIZE
+                }
+            },
+            "features": {
+                "web_search": {
+                    "enabled": USE_WEB_SEARCH,
+                    "description": "Real-time web search for fact verification"
                 }
             },
             "status": "active"
@@ -968,6 +1286,100 @@ async def get_models():
     except Exception as e:
         logger.error(f"Error retrieving model information: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Error retrieving model information")
+
+@app.post("/fact-check-text")
+async def fact_check_free_text(text: str = Form(...)):
+    """
+    Endpoint to fact-check user-provided free text.
+    """
+    try:
+        logger.info(f"Received free text fact check request: {text[:100]}...")
+        
+        # Perform fact checking on the provided text
+        fact_check_html = perform_fact_check(text)
+        
+        # Perform web search if enabled
+        web_search_results = None
+        if USE_WEB_SEARCH:
+            try:
+                # Extract key factual claims from the text
+                claims_prompt = f"""
+                Based on this text, identify 5 specific factual claims that can be directly verified through web searches.
+                Focus on extracting clear, concrete statements that appear in the text.
+                
+                Format your response as a JSON object with a "claims" field containing an array of strings.
+                Example: {{"claims": ["The Eiffel Tower is 330 meters tall", "Barack Obama was the 44th President of the United States", etc.]}}
+                
+                Important: Formulate each claim as a direct statement (not a question) that can be fact-checked.
+                
+                Text:
+                {text[:2000]}  # Use first 2000 chars to keep context manageable
+                """
+                
+                claims_response = client.chat.completions.create(
+                    model=FACT_CHECK_MODEL,
+                    messages=[
+                        {"role": "system", "content": "You are a skilled fact-checker who can identify specific, verifiable factual claims in text. Extract only clear, concrete claims that can be verified through web searches."},
+                        {"role": "user", "content": claims_prompt}
+                    ],
+                    response_format={"type": "json_object"},
+                    max_tokens=500
+                )
+                
+                claims_text = claims_response.choices[0].message.content.strip()
+                logger.info(f"Generated claims from text: {claims_text}")
+                
+                # Parse the JSON response
+                import json
+                try:
+                    claims_obj = json.loads(claims_text)
+                    factual_claims = claims_obj.get("claims", [])
+                    if not factual_claims:
+                        logger.warning("No claims extracted from the response")
+                        if isinstance(claims_obj, list):
+                            factual_claims = claims_obj
+                except json.JSONDecodeError as e:
+                    # Fallback in case of non-JSON response
+                    logger.warning(f"Failed to parse JSON response: {e}")
+                    # Try to extract claims using text processing
+                    import re
+                    claims_pattern = r'"([^"]+)"'
+                    factual_claims = re.findall(claims_pattern, claims_text)
+                    if not factual_claims:
+                        # Another fallback method
+                        claims_text = claims_text.replace("{", "").replace("}", "").replace("[", "").replace("]", "").replace("\"", "")
+                        lines = [line.strip() for line in claims_text.split("\n") if line.strip() and not line.strip().startswith('{') and not line.strip().startswith('}')]
+                        factual_claims = [line for line in lines if line]
+                
+                logger.info(f"Extracted {len(factual_claims)} claims for web search: {factual_claims}")
+                
+                # Perform web search for each claim
+                web_search_results = []
+                for claim in factual_claims[:5]:  # Limit to 5 claims
+                    search_result = perform_web_search(claim)
+                    if search_result:
+                        web_search_results.append(search_result)
+                
+                logger.info(f"Completed {len(web_search_results)} web searches")
+            
+            except Exception as e:
+                logger.error(f"Error during web search extraction: {str(e)}")
+                web_search_results = [{"error": str(e), "search_query": "Error extracting search queries"}]
+        
+        # Include model information in the response
+        return JSONResponse(content={
+            "input_text": text,
+            "fact_check_html": fact_check_html,
+            "web_search_results": web_search_results,
+            "models": {
+                "fact_check": FACT_CHECK_MODEL,
+                "web_search": WEB_SEARCH_MODEL if USE_WEB_SEARCH else "Not used",
+                "web_search_enabled": USE_WEB_SEARCH
+            }
+        })
+    except Exception as e:
+        logger.error(f"Error during free text fact-check: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error processing text: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn

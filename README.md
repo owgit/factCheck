@@ -16,6 +16,7 @@ A video fact-checking application for Instagram that automatically transcribes a
 - 🔍 **Image Analysis**: Extract and analyze visual content from videos
 - 📱 **Responsive UI**: User-friendly interface for uploading and reviewing results
 - 📊 **Detailed Reports**: Get comprehensive fact-check reports with sources
+- 🌐 **Multilingual Support**: Automatically detects input language and responds in the same language for transcription, fact-checking, and image analysis
 
 ## Tech Stack
 
@@ -207,7 +208,7 @@ Set the following environment variables in your `.env` file:
 | `INSTAGRAM_RETRY_DELAY` | Delay between retry attempts in seconds | 2 |
 | `ALLOWED_ORIGINS` | Comma-separated list of allowed origins for CORS | * |
 | `FACT_CHECK_MODEL` | OpenAI model for fact checking | chatgpt-4o-latest |
-| `IMAGE_ANALYSIS_MODEL` | OpenAI model for image analysis | gpt-4-vision-preview |
+| `IMAGE_ANALYSIS_MODEL` | OpenAI model for image analysis | gpt-4o-mini |
 | `TRANSCRIPTION_MODEL` | OpenAI model for transcription | whisper-1 |
 | `REACT_APP_MAX_UPLOAD_SIZE` | Maximum upload size in MB | 2500 |
 | `ALLOWED_FILE_TYPES` | Comma-separated list of allowed file extensions | mp4,mov,avi |

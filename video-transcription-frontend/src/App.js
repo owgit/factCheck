@@ -325,7 +325,77 @@ const ModelInfo = ({ models }) => {
             Image Analysis: {models.image_analysis.name}
           </span>
         )}
+        
+        {models.web_search && models.web_search !== "Not used" && models.web_search_enabled && (
+          <span className="inline-flex items-center px-2.5 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-100">
+            <GlobeAltIcon className="h-3 w-3 mr-1" />
+            Web Search: {models.web_search}
+          </span>
+        )}
       </div>
+    </div>
+  );
+};
+
+// Create a new WebSearchResults component
+const WebSearchResults = ({ results }) => {
+  const [expanded, setExpanded] = useState({});
+
+  if (!results || results.length === 0) {
+    return null;
+  }
+
+  const toggleExpanded = (index) => {
+    setExpanded(prev => ({
+      ...prev,
+      [index]: !prev[index]
+    }));
+  };
+
+  return (
+    <div className="space-y-4">
+      <h3 className="text-xl font-semibold mb-4 flex items-center text-gray-800">
+        <GlobeAltIcon className="w-6 h-6 mr-2 text-blue-500" />
+        Web Search Results
+      </h3>
+      
+      {results.map((result, index) => (
+        <div 
+          key={index} 
+          className="bg-white rounded-lg p-4 border border-gray-200 shadow-sm hover:shadow-md transition-shadow"
+        >
+          <div 
+            className="flex justify-between items-start cursor-pointer"
+            onClick={() => toggleExpanded(index)}
+          >
+            <h4 className="font-medium text-gray-900 flex-1">{result.question}</h4>
+            <button className="text-gray-500 hover:text-gray-700 mt-1">
+              {expanded[index] ? 
+                <ChevronUpIcon className="w-5 h-5" /> : 
+                <ChevronDownIcon className="w-5 h-5" />
+              }
+            </button>
+          </div>
+          
+          {expanded[index] && (
+            <div className="mt-3 text-gray-700 bg-gray-50 p-3 rounded-lg">
+              <div dangerouslySetInnerHTML={{ 
+                __html: DOMPurify.sanitize(
+                  result.answer 
+                    ? result.answer
+                        .replace(/\n\n/g, '<br/><br/>')
+                        .replace(/\n/g, '<br/>')
+                    : 'No result available'
+                ) 
+              }} />
+              <div className="mt-2 text-xs text-gray-500">
+                <p>Model: {result.model_used || 'Unknown'}</p>
+                <p>Timestamp: {result.timestamp ? new Date(result.timestamp).toLocaleString() : 'Not available'}</p>
+              </div>
+            </div>
+          )}
+        </div>
+      ))}
     </div>
   );
 };
@@ -333,6 +403,8 @@ const ModelInfo = ({ models }) => {
 function App() {
   const [file, setFile] = useState(null);
   const [instagramLink, setInstagramLink] = useState('');
+  const [freeText, setFreeText] = useState('');
+  const [inputMode, setInputMode] = useState('file'); // 'file', 'instagram', or 'text'
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
@@ -367,8 +439,16 @@ function App() {
 
   const handleSubmit = useCallback(async (event) => {
     event.preventDefault();
-    if (!file && !instagramLink) {
-      setError('Please upload a file or provide an Instagram link.');
+    
+    // Validate input based on mode
+    if (inputMode === 'file' && !file) {
+      setError('Please upload a file.');
+      return;
+    } else if (inputMode === 'instagram' && !instagramLink) {
+      setError('Please provide an Instagram link.');
+      return;
+    } else if (inputMode === 'text' && !freeText.trim()) {
+      setError('Please enter some text to fact-check.');
       return;
     }
 
@@ -377,17 +457,30 @@ function App() {
     setResult(null);
     setStage(1);
 
-    const formData = new FormData();
-    file ? formData.append('file', file) : formData.append('url', instagramLink);
-
     try {
-      const response = await axios.post(`${API_BASE_URL}/upload`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-        onUploadProgress: (progressEvent) => {
-          const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
-          if (percentCompleted === 100) setStage(2);
-        }
-      });
+      let response;
+      
+      if (inputMode === 'text') {
+        // Handle free text submission
+        const formData = new FormData();
+        formData.append('text', freeText);
+        
+        response = await axios.post(`${API_BASE_URL}/fact-check-text`, formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+      } else {
+        // Handle file or Instagram URL submission
+        const formData = new FormData();
+        file ? formData.append('file', file) : formData.append('url', instagramLink);
+        
+        response = await axios.post(`${API_BASE_URL}/upload`, formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+          onUploadProgress: (progressEvent) => {
+            const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+            if (percentCompleted === 100) setStage(2);
+          }
+        });
+      }
 
       setStage(3);
       setResult(response.data);
@@ -397,14 +490,13 @@ function App() {
         setModelInfo(response.data.models);
       }
       
-      // No auto-scrolling - let user navigate naturally
     } catch (error) {
       console.error('API Error:', error.response?.data);
       setError(error.response?.data?.detail || 'An error occurred');
     } finally {
       setLoading(false);
     }
-  }, [file, instagramLink]);
+  }, [file, instagramLink, freeText, inputMode]);
 
   const getFactCheckStatus = useCallback((factCheck) => {
     if (!factCheck) return { status: 'UNKNOWN', color: 'text-yellow-400' };
@@ -521,267 +613,312 @@ function App() {
   }, [result]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 p-4 md:p-8 relative overflow-hidden">
-      {stage > 0 && loading && (
-        <div className="fixed top-0 left-0 w-full z-50">
-          <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-            <motion.div
-              className="h-full bg-gradient-to-r from-blue-400 to-purple-600"
-              initial={{ width: 0 }}
-              animate={{ width: `${(stage / 3) * 100}%` }}
-              transition={{ duration: 0.5 }}
-            />
-          </div>
-          <div className="flex justify-between px-4 pt-1 text-xs text-gray-600">
-            {stageLabels.map((label, index) => (
-              <div key={index} className={`flex flex-col items-center ${stage > index ? 'text-blue-600 font-medium' : ''}`}>
-                <span>{label}</span>
-                {stage > index && <CheckIcon className="h-4 w-4 text-green-500" />}
-              </div>
-            ))}
-          </div>
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 py-12 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-4xl mx-auto">
+        <div className="text-center mb-12">
+          <h1 className="text-4xl font-bold text-gray-800 tracking-tight">
+            Fact Check Assistant
+          </h1>
+          <p className="mt-3 text-xl text-gray-600">
+            Upload a video or image, paste an Instagram link, or enter text to fact-check
+          </p>
         </div>
-      )}
 
-      {shareModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl p-6 max-w-md w-full">
-            <h3 className="text-xl font-bold mb-4">Share Results</h3>
-            <div className="space-y-4">
-              <button 
-                onClick={copyToClipboard}
-                className="w-full py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors flex items-center justify-center"
-              >
-                <span>Copy to clipboard</span>
-              </button>
-              <button 
-                onClick={exportAsPDF}
-                className="w-full py-2 px-4 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors flex items-center justify-center"
-              >
-                <ArrowDownTrayIcon className="h-5 w-5 mr-2" />
-                <span>Export as PDF</span>
-              </button>
-            </div>
-            <button 
-              onClick={() => setShareModalOpen(false)}
-              className="mt-4 w-full py-2 px-4 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
-
-      <AnimatePresence>
-        <motion.div
-          key={loading ? 'loading' : 'content'}
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -20 }}
-          transition={{ duration: 0.5 }}
-          className="max-w-4xl mx-auto bg-white bg-opacity-90 rounded-3xl shadow-lg overflow-hidden relative"
-        >
-          <div className="p-4 md:p-8">
-            <h1 className="text-3xl md:text-4xl font-bold mb-6 md:mb-8 text-gray-800">Fact Checker</h1>
-            
-            <motion.form onSubmit={handleSubmit} className="mb-8" whileHover={{ scale: 1.02 }} transition={{ type: "spring", stiffness: 300 }}>
-              <label
-                htmlFor="dropzone-file"
-                className={`flex flex-col items-center justify-center w-full h-64 border-2 border-gray-300 border-dashed rounded-2xl cursor-pointer bg-gray-50 hover:bg-gray-100 transition-all duration-300 ${isDragging ? 'border-blue-500 bg-blue-50' : ''}`}
-                onDragEnter={(e) => handleDrag(e, true)}
-                onDragOver={(e) => handleDrag(e, true)}
-                onDragLeave={(e) => handleDrag(e, false)}
-                onDrop={handleDrop}
-              >
-                <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                  <CloudArrowUpIcon className={`w-12 h-12 mb-4 ${isDragging ? 'text-blue-500' : 'text-gray-400'}`} />
-                  <p className="mb-2 text-sm text-gray-500"><span className="font-semibold">Click to upload</span> or drag and drop</p>
-                  <p className="text-xs text-gray-500">MP4, PNG, JPG, JPEG, GIF (MAX. {MAX_UPLOAD_SIZE}MB)</p>
-                </div>
-                <input id="dropzone-file" type="file" className="hidden" onChange={(e) => handleFile(e.target.files[0])} accept=".mp4,.png,.jpg,.jpeg,.gif" />
-              </label>
-              {file && <p className="mt-2 text-sm text-gray-600 font-medium">{file.name}</p>}
-              <p className="mt-4 text-center text-gray-600">OR</p>
-              <input
-                type="text"
-                className="mt-4 w-full py-3 px-4 border border-gray-300 rounded-xl shadow-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-300"
-                placeholder="Enter Instagram Video Link"
-                value={instagramLink}
-                onChange={(e) => setInstagramLink(e.target.value)}
-                disabled={loading}
-              />
-              <motion.button
-                type="submit"
-                className={`mt-4 w-full py-3 px-4 bg-gradient-to-r from-blue-500 to-purple-500 text-white font-semibold rounded-xl shadow-md hover:from-blue-600 hover:to-purple-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-300 ${loading ? 'py-5' : ''}`}
-                whileHover={{ scale: loading ? 1 : 1.05 }}
-                whileTap={{ scale: loading ? 1 : 0.95 }}
-                disabled={(file === null && instagramLink === '') || loading}
-              >
-                {loading ? (
-                  <div className="flex flex-col items-center space-y-2">
-                    <div className="flex items-center justify-center">
-                      <svg className="animate-spin h-5 w-5 text-white mr-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        <AnimatePresence mode="wait">
+          <motion.div
+            key="form"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.3 }}
+            className="bg-white rounded-2xl shadow-xl overflow-hidden"
+          >
+            <div className="p-6 sm:p-8">
+              <div className="flex flex-col space-y-6">
+                {/* Input Type Selector Tabs */}
+                <div className="flex border-b border-gray-200">
+                  <button
+                    onClick={() => setInputMode('file')}
+                    className={`flex-1 py-3 text-center border-b-2 font-medium text-sm ${
+                      inputMode === 'file'
+                        ? 'border-blue-500 text-blue-600'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    }`}
+                  >
+                    <CloudArrowUpIcon className="w-5 h-5 inline-block mr-1" />
+                    Upload Media
+                  </button>
+                  <button
+                    onClick={() => setInputMode('instagram')}
+                    className={`flex-1 py-3 text-center border-b-2 font-medium text-sm ${
+                      inputMode === 'instagram'
+                        ? 'border-blue-500 text-blue-600'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    }`}
+                  >
+                    <span className="inline-block w-5 h-5 mr-1 relative top-[1px]">
+                      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 inline-block">
+                        <path d="M12 2C14.717 2 15.056 2.01 16.122 2.06C17.187 2.11 17.912 2.277 18.55 2.525C19.21 2.779 19.766 3.123 20.322 3.678C20.8305 4.1779 21.224 4.78259 21.475 5.45C21.722 6.087 21.89 6.813 21.94 7.878C21.987 8.944 22 9.283 22 12C22 14.717 21.99 15.056 21.94 16.122C21.89 17.187 21.722 17.912 21.475 18.55C21.2247 19.2178 20.8311 19.8226 20.322 20.322C19.822 20.8303 19.2173 21.2238 18.55 21.475C17.913 21.722 17.187 21.89 16.122 21.94C15.056 21.987 14.717 22 12 22C9.283 22 8.944 21.99 7.878 21.94C6.813 21.89 6.088 21.722 5.45 21.475C4.78233 21.2245 4.17753 20.8309 3.678 20.322C3.16941 19.8222 2.77593 19.2175 2.525 18.55C2.277 17.913 2.11 17.187 2.06 16.122C2.013 15.056 2 14.717 2 12C2 9.283 2.01 8.944 2.06 7.878C2.11 6.812 2.277 6.088 2.525 5.45C2.77524 4.78218 3.1688 4.17732 3.678 3.678C4.17767 3.16923 4.78243 2.77573 5.45 2.525C6.088 2.277 6.812 2.11 7.878 2.06C8.944 2.013 9.283 2 12 2Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        <path d="M17.5 6.5L17.51 6.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        <path d="M12 16C14.2091 16 16 14.2091 16 12C16 9.79086 14.2091 8 12 8C9.79086 8 8 9.79086 8 12C8 14.2091 9.79086 16 12 16Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                       </svg>
-                      <span className="font-medium">
-                        {stage === 1 ? "Uploading your content..." : 
-                         stage === 2 ? "Processing your media..." : 
-                                       "Analyzing for facts..."}
-                      </span>
-                    </div>
-                    <span className="text-xs text-white text-opacity-90">
-                      {stage === 1 ? "Uploading your file" : 
-                       stage === 2 ? "Processing content for analysis" : 
-                                     "Fact-checking against reliable sources"}
                     </span>
-                  </div>
-                ) : 'Upload and Process'}
-              </motion.button>
-            </motion.form>
-
-            {error && (
-              <motion.div
-                initial={{ opacity: 0, y: -20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-6 rounded-lg"
-                role="alert"
-              >
-                <p>{error}</p>
-              </motion.div>
-            )}
-
-            {loading && (
-              <div className="flex justify-center mb-8 mt-2">
-                <div className="space-y-2 w-3/4">
-                  <div className="bg-gray-200 h-2 rounded-full overflow-hidden">
-                    <motion.div
-                      className="h-full bg-gradient-to-r from-blue-400 to-purple-600"
-                      initial={{ width: 0 }}
-                      animate={{ width: `${(stage / 3) * 100}%` }}
-                      transition={{ duration: 0.5 }}
-                    />
-                  </div>
+                    Instagram Link
+                  </button>
+                  <button
+                    onClick={() => setInputMode('text')}
+                    className={`flex-1 py-3 text-center border-b-2 font-medium text-sm ${
+                      inputMode === 'text'
+                        ? 'border-blue-500 text-blue-600'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    }`}
+                  >
+                    <DocumentTextIcon className="w-5 h-5 inline-block mr-1" />
+                    Free Text
+                  </button>
                 </div>
+
+                <form onSubmit={handleSubmit} className="space-y-6">
+                  {/* File Upload Section */}
+                  {inputMode === 'file' && (
+                    <div 
+                      className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${isDragging ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'}`}
+                      onDragOver={(e) => handleDrag(e, true)}
+                      onDragEnter={(e) => handleDrag(e, true)}
+                      onDragLeave={(e) => handleDrag(e, false)}
+                      onDrop={handleDrop}
+                    >
+                      <input
+                        type="file"
+                        id="file-upload"
+                        className="sr-only"
+                        onChange={(e) => handleFile(e.target.files[0])}
+                        accept=".mp4,.mov,.avi,.jpg,.jpeg,.png,.gif"
+                      />
+                      <label
+                        htmlFor="file-upload"
+                        className="cursor-pointer flex flex-col items-center justify-center"
+                      >
+                        <CloudArrowUpIcon className="w-10 h-10 text-gray-400 mb-2" />
+                        <span className="text-sm font-medium text-gray-900">
+                          {file ? file.name : 'Click to upload or drag and drop'}
+                        </span>
+                        <p className="text-xs text-gray-500 mt-1">
+                          MP4, MOV, AVI, JPG, JPEG, PNG up to {MAX_UPLOAD_SIZE}MB
+                        </p>
+                        {file && (
+                          <button
+                            type="button"
+                            className="mt-2 text-xs text-red-600 hover:text-red-800"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              setFile(null);
+                            }}
+                          >
+                            Remove file
+                          </button>
+                        )}
+                      </label>
+                    </div>
+                  )}
+
+                  {/* Instagram Link Section */}
+                  {inputMode === 'instagram' && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Instagram Post URL
+                      </label>
+                      <div className="mt-1 flex rounded-md shadow-sm">
+                        <div className="relative flex items-stretch flex-grow">
+                          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <span className="text-gray-500 sm:text-sm">
+                              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-5 h-5">
+                                <path d="M12 2C14.717 2 15.056 2.01 16.122 2.06C17.187 2.11 17.912 2.277 18.55 2.525C19.21 2.779 19.766 3.123 20.322 3.678C20.8305 4.1779 21.224 4.78259 21.475 5.45C21.722 6.087 21.89 6.813 21.94 7.878C21.987 8.944 22 9.283 22 12C22 14.717 21.99 15.056 21.94 16.122C21.89 17.187 21.722 17.912 21.475 18.55C21.2247 19.2178 20.8311 19.8226 20.322 20.322C19.822 20.8303 19.2173 21.2238 18.55 21.475C17.913 21.722 17.187 21.89 16.122 21.94C15.056 21.987 14.717 22 12 22C9.283 22 8.944 21.99 7.878 21.94C6.813 21.89 6.088 21.722 5.45 21.475C4.78233 21.2245 4.17753 20.8309 3.678 20.322C3.16941 19.8222 2.77593 19.2175 2.525 18.55C2.277 17.913 2.11 17.187 2.06 16.122C2.013 15.056 2 14.717 2 12C2 9.283 2.01 8.944 2.06 7.878C2.11 6.812 2.277 6.088 2.525 5.45C2.77524 4.78218 3.1688 4.17732 3.678 3.678C4.17767 3.16923 4.78243 2.77573 5.45 2.525C6.088 2.277 6.812 2.11 7.878 2.06C8.944 2.013 9.283 2 12 2Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                <path d="M17.5 6.5L17.51 6.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                <path d="M12 16C14.2091 16 16 14.2091 16 12C16 9.79086 14.2091 8 12 8C9.79086 8 8 9.79086 8 12C8 14.2091 9.79086 16 12 16Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                              </svg>
+                            </span>
+                          </div>
+                          <input
+                            type="text"
+                            value={instagramLink}
+                            onChange={e => setInstagramLink(e.target.value)}
+                            placeholder="https://www.instagram.com/p/..."
+                            className="focus:ring-blue-500 focus:border-blue-500 block w-full rounded-md pl-10 sm:text-sm border-gray-300"
+                          />
+                        </div>
+                      </div>
+                      <p className="mt-2 text-sm text-gray-500">
+                        Paste a direct link to an Instagram post or reel
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Free Text Section */}
+                  {inputMode === 'text' && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Enter Text to Fact-Check
+                      </label>
+                      <textarea
+                        value={freeText}
+                        onChange={e => setFreeText(e.target.value)}
+                        rows={8}
+                        className="shadow-sm focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border-gray-300 rounded-md"
+                        placeholder="Enter any text, claim, or statement you want to fact-check..."
+                      ></textarea>
+                      <p className="mt-2 text-sm text-gray-500">
+                        Enter claims, news snippets, or any text you want to verify
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-center">
+                    <button
+                      type="submit"
+                      disabled={loading}
+                      className={`flex justify-center items-center py-2 px-6 border border-transparent rounded-md shadow-sm text-sm font-medium text-white ${
+                        loading
+                          ? 'bg-blue-300 cursor-not-allowed'
+                          : 'bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500'
+                      }`}
+                    >
+                      {loading ? (
+                        <>
+                          <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
+                          {stageLabels[stage] || 'Processing'}
+                        </>
+                      ) : inputMode === 'file' ? (
+                        'Upload & Analyze'
+                      ) : inputMode === 'instagram' ? (
+                        'Process Instagram Post'
+                      ) : (
+                        'Fact Check Text'
+                      )}
+                    </button>
+                  </div>
+                </form>
+
+                {error && (
+                  <div className="mt-4 text-center text-red-500">
+                    {error}
+                  </div>
+                )}
               </div>
-            )}
+            </div>
+          </motion.div>
+        </AnimatePresence>
 
-            {result && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.2 }}
-                className="space-y-6"
+        {result && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.2 }}
+            className="mt-6 bg-white rounded-2xl p-6 shadow-sm border border-gray-200"
+          >
+            <div 
+              id="fact-check-results"
+              className="space-y-6"
+            >
+              <div 
+                className="bg-green-50 border-l-4 border-green-500 p-4 rounded-lg mb-6"
               >
-                <div 
-                  id="fact-check-results"
-                  className="bg-green-50 border-l-4 border-green-500 p-4 rounded-lg mb-6"
-                >
-                  <div className="flex">
-                    <div className="flex-shrink-0">
-                      <CheckCircleIcon className="h-5 w-5 text-green-500" />
-                    </div>
-                    <div className="ml-3">
-                      <p className="text-sm font-medium text-green-800">
-                        Analysis Complete
-                      </p>
-                      <p className="text-xs text-green-700 mt-1">
-                        Scroll down to see the detailed fact-checking results below.
-                      </p>
-                    </div>
+                <div className="flex">
+                  <div className="flex-shrink-0">
+                    <CheckCircleIcon className="h-5 w-5 text-green-500" />
                   </div>
-                  
-                  {/* Add ModelInfo component here */}
-                  {modelInfo && <ModelInfo models={modelInfo} />}
+                  <div className="ml-3">
+                    <p className="text-sm font-medium text-green-800">
+                      Analysis Complete
+                    </p>
+                    <p className="text-xs text-green-700 mt-1">
+                      Scroll down to see the detailed fact-checking results below.
+                    </p>
+                  </div>
                 </div>
+                
+                {modelInfo && <ModelInfo models={modelInfo} />}
+              </div>
 
-                <div ref={factCheckContentRef}>
-                  {result.image_analysis ? (
+              <div ref={factCheckContentRef}>
+                {result.image_analysis ? (
+                  <motion.div 
+                    whileHover={{ scale: 1.01 }} 
+                    className="bg-gray-50 rounded-2xl p-6 shadow-sm border border-gray-100"
+                  >
+                    <h3 className="text-xl font-semibold mb-4 flex items-center text-gray-800">
+                      <PhotoIcon className="w-6 h-6 mr-2 text-blue-500" />
+                      Image Fact Check
+                    </h3>
+                    <FactCheckResults 
+                      htmlContent={result.image_analysis} 
+                      onShare={handleShare}
+                      onExport={exportAsPDF}
+                    />
+                  </motion.div>
+                ) : (
+                  <>
                     <motion.div 
                       whileHover={{ scale: 1.01 }} 
                       className="bg-gray-50 rounded-2xl p-6 shadow-sm border border-gray-100"
                     >
                       <h3 className="text-xl font-semibold mb-4 flex items-center text-gray-800">
-                        <PhotoIcon className="w-6 h-6 mr-2 text-blue-500" />
-                        Image Fact Check
+                        <CheckCircleIcon className="w-6 h-6 mr-2 text-blue-500" />
+                        Fact Check Results
                       </h3>
                       <FactCheckResults 
-                        htmlContent={result.image_analysis} 
+                        htmlContent={result.fact_check_html} 
                         onShare={handleShare}
                         onExport={exportAsPDF}
                       />
                     </motion.div>
-                  ) : (
-                    <>
-                      <motion.div 
-                        whileHover={{ scale: 1.01 }} 
-                        className="bg-gray-50 rounded-2xl p-6 shadow-sm border border-gray-100"
+                    <motion.div 
+                      whileHover={{ scale: 1.01 }} 
+                      className="bg-gray-50 rounded-2xl p-6 shadow-sm border border-gray-100"
+                    >
+                      <h3 
+                        onClick={() => setTranscriptionOpen(prev => !prev)}
+                        className="text-xl font-semibold mb-4 flex items-center justify-between text-gray-800 cursor-pointer select-none"
                       >
-                        <h3 className="text-xl font-semibold mb-4 flex items-center text-gray-800">
-                          <CheckCircleIcon className="w-6 h-6 mr-2 text-blue-500" />
-                          Fact Check Results
-                        </h3>
-                        <FactCheckResults 
-                          htmlContent={result.fact_check_html} 
-                          onShare={handleShare}
-                          onExport={exportAsPDF}
-                        />
-                      </motion.div>
-                      <motion.div 
-                        whileHover={{ scale: 1.01 }} 
-                        className="bg-gray-50 rounded-2xl p-6 shadow-sm border border-gray-100"
-                      >
-                        <h3 
-                          onClick={() => setTranscriptionOpen(prev => !prev)}
-                          className="text-xl font-semibold mb-4 flex items-center justify-between text-gray-800 cursor-pointer select-none"
-                        >
-                          <div className="flex items-center">
-                            <DocumentTextIcon className="w-6 h-6 mr-2 text-blue-500" />
-                            Transcription
-                          </div>
-                          <button className="text-gray-500 hover:text-gray-700">
-                            {transcriptionOpen ? 
-                              <ChevronUpIcon className="w-5 h-5" /> : 
-                              <ChevronDownIcon className="w-5 h-5" />
-                            }
-                          </button>
-                        </h3>
-                        {transcriptionOpen && (
-                          <div className="bg-white p-4 rounded-xl overflow-auto text-gray-700 border border-gray-100">
-                            {result.transcription.split('\n').map((paragraph, index) => (
-                              <p key={index} className="mb-4">{paragraph}</p>
-                            ))}
-                          </div>
-                        )}
-                      </motion.div>
-                    </>
-                  )}
-                </div>
-              </motion.div>
-            )}
-          </div>
-        </motion.div>
-      </AnimatePresence>
-      
-      <div className="text-center mt-8 text-sm text-gray-500">
-        <p>This tool attempts to verify content but may not catch all misinformation.</p>
-        <p>Always cross-check important information with multiple reliable sources.</p>
-        {modelInfo && (
-          <div className="mt-2 text-xs">
-            <p>
-              Powered by OpenAI models
-            </p>
-            {modelInfo.fact_check && modelInfo.fact_check.type && modelInfo.fact_check.type.includes("Web Search") && (
-              <p className="mt-1 text-blue-600">
-                <span className="inline-flex items-center">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9" />
-                  </svg>
-                  Using real-time web search for fact verification
-                </span>
-              </p>
-            )}
-          </div>
+                        <div className="flex items-center">
+                          <DocumentTextIcon className="w-6 h-6 mr-2 text-blue-500" />
+                          Transcription
+                        </div>
+                        <button className="text-gray-500 hover:text-gray-700">
+                          {transcriptionOpen ? 
+                            <ChevronUpIcon className="w-5 h-5" /> : 
+                            <ChevronDownIcon className="w-5 h-5" />
+                          }
+                        </button>
+                      </h3>
+                      {transcriptionOpen && (
+                        <div className="bg-white p-4 rounded-xl overflow-auto text-gray-700 border border-gray-100">
+                          {result.transcription.split('\n').map((paragraph, index) => (
+                            <p key={index} className="mb-4">{paragraph}</p>
+                          ))}
+                        </div>
+                      )}
+                    </motion.div>
+                  </>
+                )}
+              </div>
+
+              {/* Add Web Search Results if available */}
+              {result && result.web_search_results && result.web_search_results.length > 0 && (
+                <motion.div 
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.3 }}
+                  className="mt-6 bg-gray-50 rounded-2xl p-6 shadow-sm border border-gray-100"
+                >
+                  <WebSearchResults results={result.web_search_results} />
+                </motion.div>
+              )}
+            </div>
+          </motion.div>
         )}
       </div>
     </div>
