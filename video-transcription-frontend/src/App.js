@@ -294,7 +294,7 @@ const FactCheckResults = ({ htmlContent, onShare, onExport }) => {
 };
 
 // Add ModelInfo component
-const ModelInfo = ({ models }) => {
+const ModelInfo = ({ models, detectedLanguage }) => {
   return (
     <div className="mt-4 text-xs text-gray-600 border-t pt-3 border-gray-200">
       <p className="font-medium text-gray-700 mb-1">AI Models Used:</p>
@@ -330,6 +330,13 @@ const ModelInfo = ({ models }) => {
           <span className="inline-flex items-center px-2.5 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-100">
             <GlobeAltIcon className="h-3 w-3 mr-1" />
             Web Search: {models.web_search}
+          </span>
+        )}
+        
+        {detectedLanguage && (
+          <span className="inline-flex items-center px-2.5 py-0.5 rounded-md bg-yellow-50 text-yellow-700 border border-yellow-100">
+            <GlobeAltIcon className="h-3 w-3 mr-1" />
+            Language: {detectedLanguage}
           </span>
         )}
       </div>
@@ -414,6 +421,7 @@ function App() {
   const factCheckContentRef = useRef(null);
   const [transcriptionOpen, setTranscriptionOpen] = useState(false);
   const [modelInfo, setModelInfo] = useState(null);
+  const [detectedLanguage, setDetectedLanguage] = useState(null);
 
   const handleFile = useCallback((selectedFile) => {
     if (selectedFile && selectedFile.size > MAX_UPLOAD_SIZE * 1024 * 1024) {
@@ -456,6 +464,7 @@ function App() {
     setError(null);
     setResult(null);
     setStage(1);
+    setDetectedLanguage(null);
 
     try {
       let response;
@@ -484,6 +493,11 @@ function App() {
 
       setStage(3);
       setResult(response.data);
+      
+      // Store detected language if available
+      if (response.data.detected_language) {
+        setDetectedLanguage(response.data.detected_language);
+      }
       
       // Store model information if available in the response
       if (response.data.models) {
@@ -883,7 +897,7 @@ function App() {
                   </div>
                 </div>
                 
-                {modelInfo && <ModelInfo models={modelInfo} />}
+                {modelInfo && <ModelInfo models={modelInfo} detectedLanguage={detectedLanguage} />}
               </div>
 
               <div ref={factCheckContentRef}>

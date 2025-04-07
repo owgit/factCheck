@@ -7,4 +7,5 @@ moviepy==1.0.3
 requests==2.31.0
 instaloader==4.10.0
 ffmpeg-python==0.2.0
-gunicorn==21.2.0 
+gunicorn==21.2.0
+langdetect==1.0.9 

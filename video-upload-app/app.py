@@ -5,6 +5,8 @@ import time
 import random
 import requests
 import traceback
+import re  # Ensure re is imported at the module level
+import json  # Add json import at the module level
 from fastapi import FastAPI, File, UploadFile, HTTPException, Form, BackgroundTasks
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,7 +17,7 @@ import instaloader
 import glob
 import shutil
 from datetime import datetime, timedelta
-import re
+import langdetect
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -115,10 +117,15 @@ def cleanup_old_files():
                 os.remove(file_path)
                 logging.debug(f"Removed old file: {file_path}")
 
-def perform_fact_check(text):
+def perform_fact_check(text, detected_language=None):
+    language_instruction = ""
+    if detected_language:
+        language_instruction = f"The detected language is {detected_language}. Your entire response MUST be in {detected_language}."
+    
     prompt = f"""
     Perform a thorough fact-check on the following text. Follow these steps:
     1. First, identify the language of the input text and ensure your response is in that same language.
+    {language_instruction}
     2. Identify the main claims in the text (maximum 5 most significant claims).
     3. For each claim:
        a. Search for reliable sources to verify the claim.
@@ -362,204 +369,266 @@ def perform_web_search(search_query):
         }
 
 def analyze_image(image_path):
-    with open(image_path, "rb") as image_file:
-        base64_image = base64.b64encode(image_file.read()).decode('utf-8')
-
-    prompt = f"""
-    Analyze the given image with a focus on fact-checking and identifying potential misinformation. Follow these steps:
-    1. First, identify the language of any text visible in the image. Your entire response should be in this language.
-       If no text is visible, respond in the language of the accompanying query or default to English.
-    2. Describe the main elements and context of the image briefly.
-    3. Identify the main claims (textual or visual) - maximum 5 most significant claims.
-    4. For each claim:
-       a. Search for reliable sources to verify the claim.
-       b. If no reliable sources are found, state "Unable to verify" for that claim.
-       c. If reliable sources are found, assess the claim's accuracy using specific criteria.
-       d. Provide a brief explanation for your assessment with direct references to sources.
-    5. For each claim, rate accuracy on this scale: 
-       - Accurate (claim fully supported by reliable sources)
-       - Mostly Accurate (claim mostly supported but with minor inaccuracies)
-       - Partly Accurate (claim contains a mix of accurate and inaccurate elements)
-       - Mostly Inaccurate (claim contains more inaccuracies than accuracies)
-       - Inaccurate (claim contradicted by reliable sources)
-       - Unable to verify (insufficient reliable information available)
-    6. If you're unsure about any aspect, clearly state "I don't know" for that part.
-    7. Determine if image appears to be AI-generated or manipulated in any way.
-
-    IMPORTANT: Your entire response must be in the same language as any text visible in the image.
-
-    IMPORTANT SOURCE GUIDELINES:
-    - Only use authoritative, established sources (government agencies, major news outlets, academic journals, established fact-checking organizations).
-    - Verify that URLs are stable, permanent links (not search results, temporary pages, or pages requiring login).
-    - For news sources, prefer stable archive links or permalink URLs.
-    - If you cannot find a reliably stable URL for a source, describe the source without including a URL.
-    - Include at least the source name, publication date, and title when referring to sources.
-    - Never fabricate sources - if you cannot find relevant reliable sources, state "Unable to verify".
-
-    Respond with HTML in this format and in the same language as any text in the image:
-    <div class="fact-check">
-        <h2 class="result">[INCONCLUSIVE, MOSTLY ACCURATE, MOSTLY INACCURATE, MIXED, or AI-GENERATED]</h2>
-        <section class="analysis">
-            <h3>Conclusion:</h3>
-            <p>[Detailed summary of overall accuracy, including any uncertainties or limitations in the fact-checking process]</p>
-        </section>
-        <section class="sources">
-            <h3>Sources:</h3>
-            <ul>
-                <li><a href="[STABLE_URL]">[Source name - Publication date - Title]</a></li>
-                <li><a href="[STABLE_URL]">[Source name - Publication date - Title]</a></li>
-                <li>[Source description without URL]</li>
-            </ul>
-        </section>
-        <section class="findings">
-            <h3>Findings:</h3>
-            <ul>
-                <li>
-                    <strong>Claim 1:</strong>
-                    <span class="claim-text">[Claim text]</span> -
-                    <span class="accuracy">[Accurate, Mostly Accurate, Partly Accurate, Mostly Inaccurate, Inaccurate, or Unable to verify]</span>
-                    <p class="explanation">[Detailed explanation with specific references to sources]</p>
-                </li>
-            </ul>
-        </section>
-    </div>
-    """
-
-    # Try up to defined number of times in case of API errors
-    max_retries = FACT_CHECK_MAX_RETRIES
-    retry_delay = FACT_CHECK_RETRY_DELAY
-    
-    for attempt in range(max_retries):
+    try:
+        with open(image_path, "rb") as image_file:
+            base64_image = base64.b64encode(image_file.read()).decode('utf-8')
+        
+        # Try to detect language from image text using OCR first (if available)
+        detected_language = None
         try:
-            response = client.chat.completions.create(
-                model=IMAGE_ANALYSIS_MODEL,
-                messages=[
-                    {"role": "system", "content": "You are a meticulous image fact-checker with expertise in verification, digital forensics, and source evaluation. Analyze images for factual claims and potential misinformation. Prioritize accuracy over completeness. If you're unsure about any information, clearly state 'Unable to verify'. Be extremely careful with URLs - only include stable, permanent links from established websites. When in doubt about a URL's permanence, provide the source description without a URL. Detect and respond in the same language as the content shown in the image. If there is text in the image, your response language should match that language. If no text is visible, respond in the language of the accompanying query or default to English. Check for signs of AI-generation or manipulation in images. Never fabricate sources or information - if information cannot be verified, admit this limitation."},
-                    {"role": "user", "content": [
-                        {"type": "text", "text": prompt},
-                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
-                    ]}
-                ],
-                max_tokens=1000,
-                temperature=FACT_CHECK_TEMPERATURE  # Use configurable temperature for factual, consistent responses
-            )
-            analysis_result = response.choices[0].message.content.strip()
+            # OCR could be added here in the future if needed
+            # For now, we'll rely on the AI to detect language
+            pass
+        except Exception as e:
+            logger.warning(f"Could not detect language from image: {str(e)}")
             
-            # Basic validation of the result
-            if not analysis_result or "<div class=\"fact-check\">" not in analysis_result:
-                logger.warning(f"Invalid image analysis result format on attempt {attempt+1}. Retrying...")
-                if attempt < max_retries - 1:
-                    time.sleep(retry_delay)
-                    continue
-            
-            # Check if the result contains proper sections
-            required_sections = ["<h2 class=\"result\">", "<section class=\"analysis\">", 
-                                "<section class=\"findings\">"]
-            missing_sections = [section for section in required_sections if section not in analysis_result]
-            
-            if missing_sections:
-                logger.warning(f"Image analysis result missing sections: {missing_sections} on attempt {attempt+1}. Retrying...")
-                if attempt < max_retries - 1:
-                    time.sleep(retry_delay)
-                    continue
-            
-            # Add AI model information to the image analysis result
-            if "</div>" in analysis_result:
-                # Add models used section before the closing div
-                models_section = f"""
-                <section class="ai-models">
-                    <h3>AI Models Used:</h3>
-                    <ul>
-                        <li><strong>Image Analysis:</strong> {IMAGE_ANALYSIS_MODEL}</li>
-                        {f'<li><strong>Web Search:</strong> {WEB_SEARCH_MODEL}</li>' if USE_WEB_SEARCH else ''}
-                    </ul>
-                </section>
-                """
+        prompt = f"""
+        Analyze the given image with a focus on fact-checking and identifying potential misinformation. Follow these steps:
+        1. First, identify the language of any text visible in the image. Your entire response should be in this language.
+           If no text is visible, respond in the language of the accompanying query or default to English.
+        2. Describe the main elements and context of the image briefly.
+        3. Identify the main claims (textual or visual) - maximum 5 most significant claims.
+        4. For each claim:
+           a. Search for reliable sources to verify the claim.
+           b. If no reliable sources are found, state "Unable to verify" for that claim.
+           c. If reliable sources are found, assess the claim's accuracy using specific criteria.
+           d. Provide a brief explanation for your assessment with direct references to sources.
+        5. For each claim, rate accuracy on this scale: 
+           - Accurate (claim fully supported by reliable sources)
+           - Mostly Accurate (claim mostly supported but with minor inaccuracies)
+           - Partly Accurate (claim contains a mix of accurate and inaccurate elements)
+           - Mostly Inaccurate (claim contains more inaccuracies than accuracies)
+           - Inaccurate (claim contradicted by reliable sources)
+           - Unable to verify (insufficient reliable information available)
+        6. If you're unsure about any aspect, clearly state "I don't know" for that part.
+        7. Determine if image appears to be AI-generated or manipulated in any way.
+        8. At the end of your analysis, add a special tag indicating the detected language in this format: <detected_language>LANGUAGE_CODE</detected_language>
+
+        IMPORTANT: Your entire response MUST be in the same language as any text visible in the image. This is critical - I need to emphasize that your analysis MUST be written in the EXACT SAME LANGUAGE as the text in the image, even if that language is not English.
+
+        IMPORTANT SOURCE GUIDELINES:
+        - Only use authoritative, established sources (government agencies, major news outlets, academic journals, established fact-checking organizations).
+        - Verify that URLs are stable, permanent links (not search results, temporary pages, or pages requiring login).
+        - For news sources, prefer stable archive links or permalink URLs.
+        - If you cannot find a reliably stable URL for a source, describe the source without including a URL.
+        - Include at least the source name, publication date, and title when referring to sources.
+        - Never fabricate sources - if you cannot find relevant reliable sources, state "Unable to verify".
+
+        Respond with HTML in this format and in the same language as any text in the image:
+        <div class="fact-check">
+            <h2 class="result">[INCONCLUSIVE, MOSTLY ACCURATE, MOSTLY INACCURATE, MIXED, or AI-GENERATED]</h2>
+            <section class="analysis">
+                <h3>Conclusion:</h3>
+                <p>[Detailed summary of overall accuracy, including any uncertainties or limitations in the fact-checking process]</p>
+            </section>
+            <section class="sources">
+                <h3>Sources:</h3>
+                <ul>
+                    <li><a href="[STABLE_URL]">[Source name - Publication date - Title]</a></li>
+                    <li><a href="[STABLE_URL]">[Source name - Publication date - Title]</a></li>
+                    <li>[Source description without URL]</li>
+                </ul>
+            </section>
+            <section class="findings">
+                <h3>Findings:</h3>
+                <ul>
+                    <li>
+                        <strong>Claim 1:</strong>
+                        <span class="claim-text">[Claim text]</span> -
+                        <span class="accuracy">[Accurate, Mostly Accurate, Partly Accurate, Mostly Inaccurate, Inaccurate, or Unable to verify]</span>
+                        <p class="explanation">[Detailed explanation with specific references to sources]</p>
+                    </li>
+                </ul>
+            </section>
+            <detected_language>LANGUAGE_CODE</detected_language>
+        </div>
+        """
+
+        # Try up to defined number of times in case of API errors
+        max_retries = FACT_CHECK_MAX_RETRIES
+        retry_delay = FACT_CHECK_RETRY_DELAY
+        
+        for attempt in range(max_retries):
+            try:
+                response = client.chat.completions.create(
+                    model=IMAGE_ANALYSIS_MODEL,
+                    messages=[
+                        {"role": "system", "content": "You are a meticulous image fact-checker with expertise in verification, digital forensics, and source evaluation. Analyze images for factual claims and potential misinformation. Prioritize accuracy over completeness. If you're unsure about any information, clearly state 'Unable to verify'. Be extremely careful with URLs - only include stable, permanent links from established websites. When in doubt about a URL's permanence, provide the source description without a URL. Detect and respond in the same language as the content shown in the image. If there is text in the image, your response language should match that language EXACTLY. If no text is visible, respond in the language of the accompanying query or default to English. Check for signs of AI-generation or manipulation in images. Never fabricate sources or information - if information cannot be verified, admit this limitation."},
+                        {"role": "user", "content": [
+                            {"type": "text", "text": prompt},
+                            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
+                        ]}
+                    ],
+                    max_tokens=1000,
+                    temperature=FACT_CHECK_TEMPERATURE  # Use configurable temperature for factual, consistent responses
+                )
+                analysis_result = response.choices[0].message.content.strip()
                 
-                analysis_result = analysis_result.replace("</div>", f"{models_section}</div>")
-            
-            # If web search is enabled, extract claims and perform web search
-            web_search_results = None
-            if USE_WEB_SEARCH:
-                try:
-                    # Extract key factual claims from the image
-                    claims_prompt = """
-                    Based on this image, identify 5 specific factual claims that can be directly verified through web searches.
-                    Focus on extracting clear, concrete statements that appear in or can be inferred from the image.
+                # Basic validation of the result
+                if not analysis_result or "<div class=\"fact-check\">" not in analysis_result:
+                    logger.warning(f"Invalid image analysis result format on attempt {attempt+1}. Retrying...")
+                    if attempt < max_retries - 1:
+                        time.sleep(retry_delay)
+                        continue
+                
+                # Check if the result contains proper sections
+                required_sections = ["<h2 class=\"result\">", "<section class=\"analysis\">", 
+                                    "<section class=\"findings\">"]
+                missing_sections = [section for section in required_sections if section not in analysis_result]
+                
+                if missing_sections:
+                    logger.warning(f"Image analysis result missing sections: {missing_sections} on attempt {attempt+1}. Retrying...")
+                    if attempt < max_retries - 1:
+                        time.sleep(retry_delay)
+                        continue
+                
+                # Extract detected language if available
+                detected_language = None
+                language_match = re.search(r'<detected_language>(.*?)</detected_language>', analysis_result)
+                if language_match:
+                    detected_language = language_match.group(1)
+                    # Remove the language tag from the HTML response
+                    analysis_result = re.sub(r'<detected_language>.*?</detected_language>', '', analysis_result)
+                    logger.info(f"Detected language in image: {detected_language}")
                     
-                    Format your response as a JSON object with a "claims" field containing an array of strings.
-                    Example: {"claims": ["The Eiffel Tower is 330 meters tall", "Barack Obama was the 44th President of the United States", etc.]}
-                    
-                    Important: Formulate each claim as a direct statement (not a question) that can be fact-checked.
+                    # Verify if the response is actually in the detected language
+                    if detected_language and detected_language.lower() not in ['en', 'eng', 'english']:
+                        # Check if we need to rerun with stronger language enforcement
+                        try:
+                            # Use langdetect to check the actual language of the response
+                            actual_language = langdetect.detect(analysis_result)
+                            if actual_language != detected_language:
+                                logger.warning(f"Response language mismatch: detected={detected_language}, actual={actual_language}. Will retry.")
+                                if attempt < max_retries - 1:
+                                    # Modify prompt to strongly enforce language
+                                    prompt += f"\n\nCRITICAL: Your response MUST be in {detected_language} language, not in English or any other language!"
+                                    time.sleep(retry_delay)
+                                    continue
+                        except Exception as lang_error:
+                            logger.warning(f"Error checking response language: {str(lang_error)}")
+                else:
+                    logger.info("No language tag found in image analysis result. Using default.")
+                    # Try to detect language from the analysis text as a fallback
+                    try:
+                        detected_language = langdetect.detect(analysis_result)
+                        logger.info(f"Detected language from analysis text: {detected_language}")
+                    except Exception as lang_error:
+                        logger.warning(f"Could not detect language from analysis text: {str(lang_error)}")
+                
+                # Add AI model information to the image analysis result
+                if "</div>" in analysis_result:
+                    # Add models used section before the closing div
+                    models_section = f"""
+                    <section class="ai-models">
+                        <h3>AI Models Used:</h3>
+                        <ul>
+                            <li><strong>Image Analysis:</strong> {IMAGE_ANALYSIS_MODEL}</li>
+                            {f'<li><strong>Web Search:</strong> {WEB_SEARCH_MODEL}</li>' if USE_WEB_SEARCH else ''}
+                        </ul>
+                    </section>
                     """
                     
-                    claims_response = client.chat.completions.create(
-                        model=IMAGE_ANALYSIS_MODEL,
-                        messages=[
-                            {"role": "system", "content": "You are a skilled fact-checker who can identify specific, verifiable factual claims in images. Extract only clear, concrete claims that can be verified through web searches."},
-                            {"role": "user", "content": [
-                                {"type": "text", "text": claims_prompt},
-                                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
-                            ]}
-                        ],
-                        response_format={"type": "json_object"},
-                        max_tokens=500
-                    )
-                    
-                    claims_text = claims_response.choices[0].message.content.strip()
-                    logger.info(f"Generated claims from image: {claims_text}")
-                    
-                    # Parse the JSON response
-                    import json
-                    try:
-                        claims_obj = json.loads(claims_text)
-                        factual_claims = claims_obj.get("claims", [])
-                        if not factual_claims:
-                            logger.warning("No claims extracted from the response")
-                            if isinstance(claims_obj, list):
-                                factual_claims = claims_obj
-                    except json.JSONDecodeError as e:
-                        # Fallback in case of non-JSON response
-                        logger.warning(f"Failed to parse JSON response: {e}")
-                        # Try to extract claims using text processing
-                        import re
-                        claims_pattern = r'"([^"]+)"'
-                        factual_claims = re.findall(claims_pattern, claims_text)
-                        if not factual_claims:
-                            # Another fallback method
-                            claims_text = claims_text.replace("{", "").replace("}", "").replace("[", "").replace("]", "").replace("\"", "")
-                            lines = [line.strip() for line in claims_text.split("\n") if line.strip() and not line.strip().startswith('{') and not line.strip().startswith('}')]
-                            factual_claims = [line for line in lines if line]
-                    
-                    logger.info(f"Extracted {len(factual_claims)} claims for web search: {factual_claims}")
-                    
-                    # Perform web search for each claim
-                    web_search_results = []
-                    for claim in factual_claims[:5]:  # Limit to 5 claims
-                        search_result = perform_web_search(claim)
-                        if search_result:
-                            web_search_results.append(search_result)
-                    
-                    logger.info(f"Completed {len(web_search_results)} web searches")
+                    analysis_result = analysis_result.replace("</div>", f"{models_section}</div>")
                 
-                except Exception as e:
-                    logger.error(f"Error during web search extraction: {str(e)}")
-                    web_search_results = [{"error": str(e), "search_query": "Error extracting search queries"}]
-            
-            return {
-                "analysis_result": analysis_result,
-                "web_search_results": web_search_results
-            }
-            
-        except Exception as e:
-            logger.error(f"Error in analyze_image (attempt {attempt+1}/{max_retries}): {str(e)}")
-            if attempt < max_retries - 1:
-                logger.info(f"Retrying in {retry_delay} seconds...")
-                time.sleep(retry_delay)
-            else:
-                return generate_error_fact_check("An error occurred during image analysis. Please try again later.")
+                # If web search is enabled, extract claims and perform web search
+                web_search_results = None
+                if USE_WEB_SEARCH:
+                    try:
+                        # Extract key factual claims from the image
+                        claims_prompt = """
+                        Based on this image, identify 5 specific factual claims that can be directly verified through web searches.
+                        Focus on extracting clear, concrete statements that appear in or can be inferred from the image.
+                        
+                        Format your response as a JSON object with a "claims" field containing an array of strings.
+                        Example: {"claims": ["The Eiffel Tower is 330 meters tall", "Barack Obama was the 44th President of the United States", etc.]}
+                        
+                        Important: Formulate each claim as a direct statement (not a question) that can be fact-checked.
+                        """
+                        
+                        claims_response = client.chat.completions.create(
+                            model=IMAGE_ANALYSIS_MODEL,
+                            messages=[
+                                {"role": "system", "content": "You are a skilled fact-checker who can identify specific, verifiable factual claims in images. Extract only clear, concrete claims that can be verified through web searches."},
+                                {"role": "user", "content": [
+                                    {"type": "text", "text": claims_prompt},
+                                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
+                                ]}
+                            ],
+                            response_format={"type": "json_object"},
+                            max_tokens=500
+                        )
+                        
+                        claims_text = claims_response.choices[0].message.content.strip()
+                        logger.info(f"Generated claims from image: {claims_text}")
+                        
+                        # Parse the JSON response
+                        try:
+                            claims_obj = json.loads(claims_text)
+                            factual_claims = claims_obj.get("claims", [])
+                            if not factual_claims:
+                                logger.warning("No claims extracted from the response")
+                                if isinstance(claims_obj, list):
+                                    factual_claims = claims_obj
+                        except json.JSONDecodeError as e:
+                            # Fallback in case of non-JSON response
+                            logger.warning(f"Failed to parse JSON response: {e}")
+                            # Try to extract claims using text processing
+                            claims_pattern = r'"([^"]+)"'
+                            factual_claims = re.findall(claims_pattern, claims_text)
+                            if not factual_claims:
+                                # Another fallback method
+                                claims_text = claims_text.replace("{", "").replace("}", "").replace("[", "").replace("]", "").replace("\"", "")
+                                lines = [line.strip() for line in claims_text.split("\n") if line.strip() and not line.strip().startswith('{') and not line.strip().startswith('}')]
+                                factual_claims = [line for line in lines if line]
+                        
+                        logger.info(f"Extracted {len(factual_claims)} claims for web search: {factual_claims}")
+                        
+                        # Perform web search for each claim
+                        web_search_results = []
+                        for claim in factual_claims[:5]:  # Limit to 5 claims
+                            search_result = perform_web_search(claim)
+                            if search_result:
+                                web_search_results.append(search_result)
+                        
+                        logger.info(f"Completed {len(web_search_results)} web searches")
+                    
+                    except Exception as e:
+                        logger.error(f"Error during web search extraction: {str(e)}")
+                        web_search_results = [{"error": str(e), "search_query": "Error extracting search queries"}]
+                
+                # Return the analysis result with detected language
+                return {
+                    "analysis_result": analysis_result,
+                    "web_search_results": web_search_results,
+                    "detected_language": detected_language
+                }
+                
+            except Exception as e:
+                logger.error(f"Error analyzing image on attempt {attempt+1}: {str(e)}")
+                if attempt < max_retries - 1:
+                    logger.info(f"Retrying in {retry_delay} seconds...")
+                    time.sleep(retry_delay)
+                else:
+                    return {
+                        "analysis_result": generate_error_fact_check(f"Error analyzing image after {max_retries} attempts: {str(e)}"),
+                        "detected_language": None,
+                        "web_search_results": None
+                    }
+    except Exception as outer_e:
+        logger.error(f"Outer error in analyze_image: {str(outer_e)}", exc_info=True)
+        return {
+            "analysis_result": generate_error_fact_check(f"Error processing image: {str(outer_e)}"),
+            "detected_language": None,
+            "web_search_results": None
+        }
+    
+    return {
+        "analysis_result": generate_error_fact_check("Failed to analyze image after maximum retries"),
+        "detected_language": None,
+        "web_search_results": None
+    }
 
-def process_video(video_path):
+async def process_video(video_path):
     try:
         audio_path = os.path.join(UPLOAD_DIRECTORY, "extracted_audio.wav")
         video = VideoFileClip(video_path)
@@ -580,7 +649,7 @@ def process_video(video_path):
         # Use text from transcription
         transcription_text = transcription.text
 
-        fact_check_html = perform_fact_check(transcription_text)
+        fact_check_html = perform_fact_check(transcription_text, detected_language)
         
         # Perform web search if enabled
         web_search_results = None
@@ -623,19 +692,8 @@ def process_video(video_path):
                         if isinstance(claims_obj, list):
                             factual_claims = claims_obj
                 except json.JSONDecodeError as e:
-                    # Fallback in case of non-JSON response
                     logger.warning(f"Failed to parse JSON response: {e}")
-                    # Try to extract claims using text processing
-                    import re
-                    claims_pattern = r'"([^"]+)"'
-                    factual_claims = re.findall(claims_pattern, claims_text)
-                    if not factual_claims:
-                        # Another fallback method
-                        claims_text = claims_text.replace("{", "").replace("}", "").replace("[", "").replace("]", "").replace("\"", "")
-                        lines = [line.strip() for line in claims_text.split("\n") if line.strip() and not line.strip().startswith('{') and not line.strip().startswith('}')]
-                        factual_claims = [line for line in lines if line]
-                
-                logger.info(f"Extracted {len(factual_claims)} claims for web search: {factual_claims}")
+                    factual_claims = []
                 
                 # Perform web search for each claim
                 web_search_results = []
@@ -671,6 +729,15 @@ def process_video(video_path):
         })
     except Exception as e:
         logging.error(f"Error processing video: {str(e)}")
+        
+        # Clean up files in case of error
+        for path in [video_path, audio_path]:
+            if path and os.path.exists(path):
+                try:
+                    os.remove(path)
+                except Exception as cleanup_error:
+                    logger.warning(f"Error cleaning up file {path}: {str(cleanup_error)}")
+                    
         raise HTTPException(status_code=500, detail=f"Error processing video: {str(e)}")
 
 def download_instagram_video(url: str) -> str:
@@ -1182,46 +1249,63 @@ def handle_instagram_fallback(url: str) -> str:
 @app.post("/upload")
 async def upload_file(file: UploadFile = File(None), url: str = Form(None), background_tasks: BackgroundTasks = None):
     try:
-        cleanup_old_files()
+        if not file and not url:
+            raise HTTPException(status_code=400, detail="Either file or URL is required")
         
-        if url:
-            if "instagram.com" in url or "instagr.am" in url:
+        # Create upload directory if it doesn't exist
+        os.makedirs(UPLOAD_DIRECTORY, exist_ok=True)
+        
+        media_path = None
+        
+        # Handle file upload
+        if file:
+            file_extension = os.path.splitext(file.filename)[1].lower()
+            # Normalize extensions by removing the dot if present in the environment variable
+            allowed_extensions_env = os.getenv('ALLOWED_FILE_TYPES', 'mp4,mov,avi,jpg,jpeg,png,gif')
+            allowed_extensions = [ext.strip().lower() for ext in allowed_extensions_env.split(',')]
+            allowed_extensions = [ext if ext.startswith('.') else f'.{ext}' for ext in allowed_extensions]
+            
+            # Check if the file extension is allowed
+            if file_extension not in allowed_extensions:
+                raise HTTPException(status_code=400, detail=f"File type not allowed. Allowed types: {', '.join(ext.lstrip('.') for ext in allowed_extensions)}")
+            
+            media_path = os.path.join(UPLOAD_DIRECTORY, f"upload_{int(time.time())}{file_extension}")
+            
+            with open(media_path, "wb") as buffer:
+                buffer.write(await file.read())
+            
+            logger.info(f"File uploaded: {media_path}")
+        
+        # Handle Instagram URL
+        elif url:
+            if "instagram.com" in url:
                 try:
                     media_path = download_instagram_video(url)
-                except HTTPException as e:
-                    if e.status_code == 502 and isinstance(e.detail, dict) and e.detail.get("error") == "instagram_blocked":
-                        # Return a more user-friendly error for frontend handling
-                        return JSONResponse(
-                            status_code=502,
-                            content={
-                                "error": "instagram_blocked",
-                                "message": e.detail.get("message", "Instagram download failed"),
-                                "suggestion": e.detail.get("suggestion", "Please upload the file directly"),
-                                "url": e.detail.get("url", url)
-                            }
-                        )
-                    else:
-                        raise e
+                    if not media_path:
+                        raise HTTPException(status_code=400, detail="Failed to download media from Instagram")
+                    logger.info(f"Instagram media downloaded: {media_path}")
+                except Exception as e:
+                    logger.error(f"Instagram download error: {str(e)}", exc_info=True)
+                    raise HTTPException(status_code=400, detail=f"Error downloading from Instagram: {str(e)}")
             else:
-                # Handle other URLs if needed
-                raise HTTPException(status_code=400, detail="Only Instagram URLs are currently supported")
-        elif file:
-            media_path = os.path.join(UPLOAD_DIRECTORY, file.filename)
-            with open(media_path, "wb") as buffer:
-                shutil.copyfileobj(file.file, buffer)
-        else:
-            raise HTTPException(status_code=400, detail="No file or URL provided")
-
-        if not os.path.exists(media_path):
-            raise HTTPException(status_code=404, detail=f"Media file not found: {media_path}")
-
+                raise HTTPException(status_code=400, detail="Only Instagram URLs are supported")
+        
+        # Process the media file based on its type
         if media_path.lower().endswith(('.mp4', '.mov', '.avi')):
-            return process_video(media_path)
+            logger.info(f"Processing video: {media_path}")
+            try:
+                return await process_video(media_path)
+            except Exception as e:
+                logger.error(f"Error processing video: {str(e)}", exc_info=True)
+                raise HTTPException(status_code=500, detail=f"Error processing video: {str(e)}")
+        
         elif media_path.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
+            logger.info(f"Processing image: {media_path}")
             image_analysis_results = analyze_image(media_path)
             
             # Extract the components from the analysis results
             analysis_result = image_analysis_results.get("analysis_result", "")
+            detected_language = image_analysis_results.get("detected_language", "")
             web_search_results = image_analysis_results.get("web_search_results", None)
             
             # Cleanup the media file after processing
@@ -1230,6 +1314,7 @@ async def upload_file(file: UploadFile = File(None), url: str = Form(None), back
             
             return JSONResponse(content={
                 "image_analysis": analysis_result,
+                "detected_language": detected_language,
                 "web_search_results": web_search_results,
                 "models": {
                     "image_analysis": IMAGE_ANALYSIS_MODEL,
@@ -1288,15 +1373,18 @@ async def get_models():
         raise HTTPException(status_code=500, detail="Error retrieving model information")
 
 @app.post("/fact-check-text")
-async def fact_check_free_text(text: str = Form(...)):
-    """
-    Endpoint to fact-check user-provided free text.
-    """
+async def fact_check_text(text: str = Form(...)):
     try:
-        logger.info(f"Received free text fact check request: {text[:100]}...")
-        
-        # Perform fact checking on the provided text
-        fact_check_html = perform_fact_check(text)
+        # Try to detect language using langdetect
+        detected_language = None
+        try:
+            detected_language = langdetect.detect(text)
+            logger.info(f"Detected language for text input: {detected_language}")
+        except Exception as e:
+            logger.warning(f"Could not detect language: {str(e)}")
+            
+        # Perform fact-checking on the text
+        fact_check_html = perform_fact_check(text, detected_language)
         
         # Perform web search if enabled
         web_search_results = None
@@ -1366,10 +1454,9 @@ async def fact_check_free_text(text: str = Form(...)):
                 logger.error(f"Error during web search extraction: {str(e)}")
                 web_search_results = [{"error": str(e), "search_query": "Error extracting search queries"}]
         
-        # Include model information in the response
         return JSONResponse(content={
-            "input_text": text,
             "fact_check_html": fact_check_html,
+            "detected_language": detected_language,
             "web_search_results": web_search_results,
             "models": {
                 "fact_check": FACT_CHECK_MODEL,
@@ -1378,8 +1465,8 @@ async def fact_check_free_text(text: str = Form(...)):
             }
         })
     except Exception as e:
-        logger.error(f"Error during free text fact-check: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Error processing text: {str(e)}")
+        logger.error(f"Error fact-checking text: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error fact-checking text: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn
