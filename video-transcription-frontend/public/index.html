@@ -3,17 +3,35 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#000000" />
+    <meta name="theme-color" content="#1E40AF" />
     <meta
       name="description"
       content="AI-powered fact-checking tool for verifying claims in videos, Instagram posts, and text. Combat misinformation with automated, evidence-based verification using OpenAI GPT-4o technology."
     />
     <meta name="keywords" content="fact check, fact verification, misinformation detection, claim verification, video fact-check, Instagram fact-check, AI fact-checking, GPT-4o, automated fact-checking, content verification, truth verification, information verification, media verification, reliable content" />
     <meta name="author" content="Uygar Duzgun" />
-    <meta name="robots" content="index, follow" />
+    <meta name="robots" content="index, follow, max-image-preview:large" />
+    
+    <!-- Canonical URL -->
+    <link rel="canonical" href="https://yourdomain.com/" />
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://yourdomain.com/" />
     <meta property="og:title" content="Fact Check - AI-Powered Content Verification Tool" />
     <meta property="og:description" content="Verify factual claims in videos, Instagram posts, and text using AI-powered analysis and web search verification." />
-    <meta property="og:type" content="website" />
+    <meta property="og:image" content="https://yourdomain.com/og-image.jpg" />
+    <meta property="og:image:alt" content="AI Fact Checking Platform" />
+    <meta property="og:site_name" content="Fact Check" />
+    <meta property="og:locale" content="en_US" />
+    
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:url" content="https://yourdomain.com/" />
+    <meta name="twitter:title" content="Fact Check - AI-Powered Content Verification Tool" />
+    <meta name="twitter:description" content="Verify factual claims in videos, Instagram posts, and text using AI-powered analysis and web search verification." />
+    <meta name="twitter:image" content="https://yourdomain.com/twitter-image.jpg" />
+    <meta name="twitter:creator" content="@uygarduzgun" />
 
     <!-- Favicon Links -->
     <link rel="icon" href="%PUBLIC_URL%/favicon.ico" type="image/x-icon" />
@@ -27,6 +45,11 @@
 
     <!-- Apple Touch Icon -->
     <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.png" />
+    
+    <!-- Apple Web App Meta -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Fact Check" />
 
     <!-- Web App Manifest -->
     <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
@@ -63,6 +86,69 @@
       ]
     }
     </script>
+
+    <!-- Fact-checking service structured data -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "ClaimReviewService",
+      "name": "Fact Check - AI-Powered Content Verification",
+      "url": "https://yourdomain.com/",
+      "potentialAction": {
+        "@type": "ReviewAction",
+        "target": {
+          "@type": "EntryPoint",
+          "urlTemplate": "https://yourdomain.com/",
+          "description": "Upload video, image, Instagram URL or text to verify"
+        },
+        "resultReview": {
+          "@type": "Review",
+          "reviewRating": {
+            "@type": "Rating",
+            "ratingValue": 5,
+            "bestRating": 5
+          }
+        }
+      }
+    }
+    </script>
+
+    <!-- FAQ Structured Data -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "How does the AI fact-checking tool work?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Our AI fact-checker uses advanced GPT-4o technology to analyze video content, Instagram posts, or text. It transcribes videos, identifies key claims, and verifies them using reliable web sources. Results include a detailed analysis with evidence and references."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "What types of content can I fact-check?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "You can verify videos (MP4, MOV, AVI), images (JPG, PNG), Instagram posts by URL, or free text containing factual claims. Our system is designed to handle a wide range of content formats."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "How accurate is the fact-checking?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Our system uses OpenAI's latest models with web search capabilities to provide high-quality fact verification. While extremely effective, we still recommend reviewing sources for critical decisions. Results show confidence levels and reference sources for transparency."
+          }
+        }
+      ]
+    }
+    </script>
+
+    <!-- Preload critical assets -->
+    <link rel="preload" href="%PUBLIC_URL%/logo192.png" as="image" />
   </head>
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>
