@@ -231,10 +231,13 @@ def perform_fact_check(text, detected_language=None, should_use_web_search=True,
                 if should_use_web_search:
                     models_list.append(f'<li><strong>Web Search:</strong> {WEB_SEARCH_MODEL}</li>')
                     
+                # Join the list items into a single string with newlines BEFORE the f-string
+                models_html_list = "\n".join(models_list)
+                
                 models_section = f"""
                 <section class="ai-models">
                     <h3>AI Models Used:</h3>
-                    <ul>{"\n".join(models_list)}</ul>
+                    <ul>{models_html_list}</ul> 
                 </section>
                 """
                 
@@ -270,10 +273,13 @@ def generate_error_fact_check(error_message, should_use_web_search=True, context
     if should_use_web_search:
         models_list.append(f'<li><strong>Web Search:</strong> {WEB_SEARCH_MODEL}</li>')
         
+    # Join the list items into a single string with newlines
+    models_html_list = "\n".join(models_list)
+    
     models_section = f"""
     <section class="ai-models">
         <h3>AI Models Used (Attempted):</h3>
-        <ul>{"\n".join(models_list)}</ul>
+        <ul>{models_html_list}</ul> 
     </section>
     """
     
@@ -536,10 +542,13 @@ def analyze_image(image_path, should_use_web_search=True):
                     if should_use_web_search:
                         models_list.append(f'<li><strong>Web Search:</strong> {WEB_SEARCH_MODEL}</li>')
                         
+                    # Join the list items into a single string with newlines BEFORE the f-string
+                    models_html_list = "\n".join(models_list)
+                    
                     models_section = f"""
                     <section class="ai-models">
                         <h3>AI Models Used:</h3>
-                        <ul>{"\n".join(models_list)}</ul>
+                        <ul>{models_html_list}</ul> 
                     </section>
                     """
                     
