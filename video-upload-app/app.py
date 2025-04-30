@@ -117,7 +117,7 @@ def cleanup_old_files():
                 os.remove(file_path)
                 logging.debug(f"Removed old file: {file_path}")
 
-def perform_fact_check(text, detected_language=None):
+def perform_fact_check(text, detected_language=None, should_use_web_search=True, context='video'):
     language_instruction = ""
     if detected_language:
         language_instruction = f"The detected language is {detected_language}. Your entire response MUST be in {detected_language}."
@@ -223,15 +223,18 @@ def perform_fact_check(text, detected_language=None):
             
             # Add AI model information to the fact-check result
             if "</div>" in fact_check_result:
-                # Add models used section before the closing div
+                # Build models section based on context
+                models_list = []
+                if context == 'video':
+                    models_list.append(f"<li><strong>Transcription:</strong> {TRANSCRIPTION_MODEL}</li>")
+                models_list.append(f"<li><strong>Fact Checking:</strong> {FACT_CHECK_MODEL}</li>")
+                if should_use_web_search:
+                    models_list.append(f'<li><strong>Web Search:</strong> {WEB_SEARCH_MODEL}</li>')
+                    
                 models_section = f"""
                 <section class="ai-models">
                     <h3>AI Models Used:</h3>
-                    <ul>
-                        <li><strong>Transcription:</strong> {TRANSCRIPTION_MODEL}</li>
-                        <li><strong>Fact Checking:</strong> {FACT_CHECK_MODEL}</li>
-                        {f'<li><strong>Web Search:</strong> {WEB_SEARCH_MODEL}</li>' if USE_WEB_SEARCH else ''}
-                    </ul>
+                    <ul>{"\n".join(models_list)}</ul>
                 </section>
                 """
                 
@@ -245,22 +248,32 @@ def perform_fact_check(text, detected_language=None):
                 logger.info(f"Retrying in {retry_delay} seconds...")
                 time.sleep(retry_delay)
             else:
-                return generate_error_fact_check("An error occurred during fact-checking. Please try again later.")
+                # Pass flag and context to error generator
+                return generate_error_fact_check("An error occurred during fact-checking. Please try again later.", should_use_web_search, context)
     
-    return generate_error_fact_check("Failed to complete fact-checking after multiple attempts.")
+    # Pass flag and context to error generator
+    return generate_error_fact_check("Failed to complete fact-checking after multiple attempts.", should_use_web_search, context)
 
-def generate_error_fact_check(error_message):
+def generate_error_fact_check(error_message, should_use_web_search=True, context='unknown'):
     """Generate a properly formatted error message for fact check failures"""
     
-    # AI models used section for inclusion in the error message
+    # Build models section based on context and flag
+    models_list = []
+    if context == 'video':
+        models_list.append(f"<li><strong>Transcription:</strong> {TRANSCRIPTION_MODEL}</li>")
+    elif context == 'image':
+         models_list.append(f"<li><strong>Image Analysis:</strong> {IMAGE_ANALYSIS_MODEL}</li>")
+    # Always show Fact Checking model if context is text or video
+    if context in ['text', 'video']:
+        models_list.append(f"<li><strong>Fact Checking:</strong> {FACT_CHECK_MODEL}</li>")
+        
+    if should_use_web_search:
+        models_list.append(f'<li><strong>Web Search:</strong> {WEB_SEARCH_MODEL}</li>')
+        
     models_section = f"""
     <section class="ai-models">
-        <h3>AI Models Used:</h3>
-        <ul>
-            <li><strong>Transcription:</strong> {TRANSCRIPTION_MODEL}</li>
-            <li><strong>Fact Checking:</strong> {FACT_CHECK_MODEL}</li>
-            {f'<li><strong>Web Search:</strong> {WEB_SEARCH_MODEL}</li>' if USE_WEB_SEARCH else ''}
-        </ul>
+        <h3>AI Models Used (Attempted):</h3>
+        <ul>{"\n".join(models_list)}</ul>
     </section>
     """
     
@@ -368,7 +381,7 @@ def perform_web_search(search_query):
             "timestamp": datetime.now().isoformat()
         }
 
-def analyze_image(image_path):
+def analyze_image(image_path, should_use_web_search=True):
     try:
         with open(image_path, "rb") as image_file:
             base64_image = base64.b64encode(image_file.read()).decode('utf-8')
@@ -517,14 +530,16 @@ def analyze_image(image_path):
                 
                 # Add AI model information to the image analysis result
                 if "</div>" in analysis_result:
-                    # Add models used section before the closing div
+                    # Build models section based on context and flag
+                    models_list = []
+                    models_list.append(f"<li><strong>Image Analysis:</strong> {IMAGE_ANALYSIS_MODEL}</li>")
+                    if should_use_web_search:
+                        models_list.append(f'<li><strong>Web Search:</strong> {WEB_SEARCH_MODEL}</li>')
+                        
                     models_section = f"""
                     <section class="ai-models">
                         <h3>AI Models Used:</h3>
-                        <ul>
-                            <li><strong>Image Analysis:</strong> {IMAGE_ANALYSIS_MODEL}</li>
-                            {f'<li><strong>Web Search:</strong> {WEB_SEARCH_MODEL}</li>' if USE_WEB_SEARCH else ''}
-                        </ul>
+                        <ul>{"\n".join(models_list)}</ul>
                     </section>
                     """
                     
@@ -532,7 +547,7 @@ def analyze_image(image_path):
                 
                 # If web search is enabled, extract claims and perform web search
                 web_search_results = None
-                if USE_WEB_SEARCH:
+                if should_use_web_search:
                     try:
                         # Extract key factual claims from the image
                         claims_prompt = """
@@ -609,26 +624,29 @@ def analyze_image(image_path):
                     logger.info(f"Retrying in {retry_delay} seconds...")
                     time.sleep(retry_delay)
                 else:
+                    # Pass flag and context to error generator
                     return {
-                        "analysis_result": generate_error_fact_check(f"Error analyzing image after {max_retries} attempts: {str(e)}"),
+                        "analysis_result": generate_error_fact_check(f"Error analyzing image after {max_retries} attempts: {str(e)}", should_use_web_search, 'image'),
                         "detected_language": None,
                         "web_search_results": None
                     }
     except Exception as outer_e:
         logger.error(f"Outer error in analyze_image: {str(outer_e)}", exc_info=True)
+        # Pass flag and context to error generator
         return {
-            "analysis_result": generate_error_fact_check(f"Error processing image: {str(outer_e)}"),
+            "analysis_result": generate_error_fact_check(f"Error processing image: {str(outer_e)}", should_use_web_search, 'image'),
             "detected_language": None,
             "web_search_results": None
         }
     
+    # Pass flag and context to error generator
     return {
-        "analysis_result": generate_error_fact_check("Failed to analyze image after maximum retries"),
+        "analysis_result": generate_error_fact_check("Failed to analyze image after maximum retries", should_use_web_search, 'image'),
         "detected_language": None,
         "web_search_results": None
     }
 
-async def process_video(video_path):
+async def process_video(video_path, should_use_web_search=True):
     try:
         audio_path = os.path.join(UPLOAD_DIRECTORY, "extracted_audio.wav")
         video = VideoFileClip(video_path)
@@ -649,11 +667,12 @@ async def process_video(video_path):
         # Use text from transcription
         transcription_text = transcription.text
 
-        fact_check_html = perform_fact_check(transcription_text, detected_language)
+        # Pass flag and context ('video') to fact check
+        fact_check_html = perform_fact_check(transcription_text, detected_language, should_use_web_search, context='video')
         
         # Perform web search if enabled
         web_search_results = None
-        if USE_WEB_SEARCH:
+        if should_use_web_search:
             try:
                 # Extract key factual claims from the transcription
                 claims_prompt = f"""
@@ -721,10 +740,10 @@ async def process_video(video_path):
             "detected_language": detected_language,
             "web_search_results": web_search_results,
             "models": {
-                "transcription": TRANSCRIPTION_MODEL,
-                "fact_check": FACT_CHECK_MODEL,
-                "web_search": WEB_SEARCH_MODEL if USE_WEB_SEARCH else "Not used",
-                "web_search_enabled": USE_WEB_SEARCH
+                "transcription": {"name": TRANSCRIPTION_MODEL},
+                "fact_check": {"name": FACT_CHECK_MODEL},
+                "web_search": WEB_SEARCH_MODEL if should_use_web_search and web_search_results else "Not used",
+                "web_search_enabled": should_use_web_search
             }
         })
     except Exception as e:
@@ -1247,8 +1266,17 @@ def handle_instagram_fallback(url: str) -> str:
     )
 
 @app.post("/upload")
-async def upload_file(file: UploadFile = File(None), url: str = Form(None), background_tasks: BackgroundTasks = None):
+async def upload_file(
+    file: UploadFile = File(None), 
+    url: str = Form(None), 
+    use_web_search: str = Form('true'),
+    background_tasks: BackgroundTasks = None
+):
     try:
+        # Convert string 'true'/'false' to boolean
+        should_use_web_search = use_web_search.lower() == 'true'
+        logger.info(f"Upload request - Use web search: {should_use_web_search}")
+        
         if not file and not url:
             raise HTTPException(status_code=400, detail="Either file or URL is required")
         
@@ -1256,6 +1284,7 @@ async def upload_file(file: UploadFile = File(None), url: str = Form(None), back
         os.makedirs(UPLOAD_DIRECTORY, exist_ok=True)
         
         media_path = None
+        is_instagram_url = False
         
         # Handle file upload
         if file:
@@ -1284,6 +1313,7 @@ async def upload_file(file: UploadFile = File(None), url: str = Form(None), back
                     if not media_path:
                         raise HTTPException(status_code=400, detail="Failed to download media from Instagram")
                     logger.info(f"Instagram media downloaded: {media_path}")
+                    is_instagram_url = True
                 except Exception as e:
                     logger.error(f"Instagram download error: {str(e)}", exc_info=True)
                     raise HTTPException(status_code=400, detail=f"Error downloading from Instagram: {str(e)}")
@@ -1293,15 +1323,15 @@ async def upload_file(file: UploadFile = File(None), url: str = Form(None), back
         # Process the media file based on its type
         if media_path.lower().endswith(('.mp4', '.mov', '.avi')):
             logger.info(f"Processing video: {media_path}")
-            try:
-                return await process_video(media_path)
-            except Exception as e:
-                logger.error(f"Error processing video: {str(e)}", exc_info=True)
-                raise HTTPException(status_code=500, detail=f"Error processing video: {str(e)}")
+            # Pass should_use_web_search to process_video
+            background_tasks.add_task(process_video, media_path, should_use_web_search)
+            # Immediate response for background task
+            return JSONResponse(content={"message": "Video processing started. Results will be available shortly.", "status": "processing"}, status_code=202)
         
         elif media_path.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
             logger.info(f"Processing image: {media_path}")
-            image_analysis_results = analyze_image(media_path)
+            # Pass should_use_web_search to analyze_image
+            image_analysis_results = analyze_image(media_path, should_use_web_search)
             
             # Extract the components from the analysis results
             analysis_result = image_analysis_results.get("analysis_result", "")
@@ -1317,9 +1347,9 @@ async def upload_file(file: UploadFile = File(None), url: str = Form(None), back
                 "detected_language": detected_language,
                 "web_search_results": web_search_results,
                 "models": {
-                    "image_analysis": IMAGE_ANALYSIS_MODEL,
-                    "web_search": WEB_SEARCH_MODEL if USE_WEB_SEARCH else "Not used",
-                    "web_search_enabled": USE_WEB_SEARCH
+                    "image_analysis": {"name": IMAGE_ANALYSIS_MODEL},
+                    "web_search": WEB_SEARCH_MODEL if should_use_web_search and web_search_results else "Not used", 
+                    "web_search_enabled": should_use_web_search
                 }
             })
         else:
@@ -1373,8 +1403,12 @@ async def get_models():
         raise HTTPException(status_code=500, detail="Error retrieving model information")
 
 @app.post("/fact-check-text")
-async def fact_check_text(text: str = Form(...)):
+async def fact_check_text(text: str = Form(...), use_web_search: str = Form('true')):
     try:
+        # Convert string 'true'/'false' to boolean
+        should_use_web_search = use_web_search.lower() == 'true'
+        logger.info(f"Fact-check text request - Use web search: {should_use_web_search}")
+        
         # Try to detect language using langdetect
         detected_language = None
         try:
@@ -1383,12 +1417,12 @@ async def fact_check_text(text: str = Form(...)):
         except Exception as e:
             logger.warning(f"Could not detect language: {str(e)}")
             
-        # Perform fact-checking on the text
-        fact_check_html = perform_fact_check(text, detected_language)
+        # Perform fact-checking on the text, pass flag and context ('text')
+        fact_check_html = perform_fact_check(text, detected_language, should_use_web_search, context='text')
         
-        # Perform web search if enabled
+        # Perform web search if enabled for this request
         web_search_results = None
-        if USE_WEB_SEARCH:
+        if should_use_web_search:
             try:
                 # Extract key factual claims from the text
                 claims_prompt = f"""
@@ -1459,9 +1493,9 @@ async def fact_check_text(text: str = Form(...)):
             "detected_language": detected_language,
             "web_search_results": web_search_results,
             "models": {
-                "fact_check": FACT_CHECK_MODEL,
-                "web_search": WEB_SEARCH_MODEL if USE_WEB_SEARCH else "Not used",
-                "web_search_enabled": USE_WEB_SEARCH
+                "fact_check": {"name": FACT_CHECK_MODEL},
+                "web_search": WEB_SEARCH_MODEL if should_use_web_search and web_search_results else "Not used",
+                "web_search_enabled": should_use_web_search
             }
         })
     except Exception as e:

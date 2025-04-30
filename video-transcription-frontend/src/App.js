@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -407,6 +407,24 @@ const WebSearchResults = ({ results }) => {
   );
 };
 
+// Buy Me A Coffee Button Component
+const BuyMeCoffeeButton = () => {
+  return (
+    <div className="fixed bottom-6 right-6 z-50 shadow-lg rounded-full transition-transform hover:scale-105">
+      <a 
+        href="https://www.buymeacoffee.com/uygarduzgun" 
+        target="_blank" 
+        rel="noopener noreferrer"
+        className="flex items-center gap-2 bg-[#FFDD00] hover:bg-[#FFDD00]/90 text-black px-4 py-2 rounded-full shadow-md hover:shadow-lg transition-all duration-300 font-medium"
+        aria-label="Support me by buying a coffee"
+      >
+        <span role="img" aria-hidden="true">☕</span>
+        <span className="text-sm md:text-base">Buy me a coffee</span>
+      </a>
+    </div>
+  );
+};
+
 function App() {
   const [file, setFile] = useState(null);
   const [instagramLink, setInstagramLink] = useState('');
@@ -422,6 +440,13 @@ function App() {
   const [transcriptionOpen, setTranscriptionOpen] = useState(false);
   const [modelInfo, setModelInfo] = useState(null);
   const [detectedLanguage, setDetectedLanguage] = useState(null);
+  const [useWebSearch, setUseWebSearch] = useState(() => {
+    return localStorage.getItem('USE_WEB_SEARCH') !== 'false';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('USE_WEB_SEARCH', useWebSearch ? 'true' : 'false');
+  }, [useWebSearch]);
 
   const handleFile = useCallback((selectedFile) => {
     if (selectedFile && selectedFile.size > MAX_UPLOAD_SIZE * 1024 * 1024) {
@@ -473,6 +498,7 @@ function App() {
         // Handle free text submission
         const formData = new FormData();
         formData.append('text', freeText);
+        formData.append('use_web_search', useWebSearch ? 'true' : 'false');
         
         response = await axios.post(`${API_BASE_URL}/fact-check-text`, formData, {
           headers: { 'Content-Type': 'multipart/form-data' },
@@ -481,6 +507,7 @@ function App() {
         // Handle file or Instagram URL submission
         const formData = new FormData();
         file ? formData.append('file', file) : formData.append('url', instagramLink);
+        formData.append('use_web_search', useWebSearch ? 'true' : 'false');
         
         response = await axios.post(`${API_BASE_URL}/upload`, formData, {
           headers: { 'Content-Type': 'multipart/form-data' },
@@ -510,7 +537,7 @@ function App() {
     } finally {
       setLoading(false);
     }
-  }, [file, instagramLink, freeText, inputMode]);
+  }, [file, instagramLink, freeText, inputMode, useWebSearch]);
 
   const getFactCheckStatus = useCallback((factCheck) => {
     if (!factCheck) return { status: 'UNKNOWN', color: 'text-yellow-400' };
@@ -638,6 +665,9 @@ function App() {
           </p>
         </header>
 
+        {/* Add the BuyMeCoffeeButton component */}
+        <BuyMeCoffeeButton />
+        
         <AnimatePresence mode="wait">
           <motion.section
             key="form"
@@ -703,6 +733,30 @@ function App() {
                     <DocumentTextIcon className="w-5 h-5 inline-block mr-1" aria-hidden="true" />
                     <span>Free Text</span>
                   </button>
+                </div>
+
+                {/* Add Web Search Toggle */}
+                <div className="mt-4 bg-gray-50 rounded-lg p-3 border border-gray-200">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center">
+                      <GlobeAltIcon className="h-5 w-5 text-gray-500 mr-2" />
+                      <span className="text-sm text-gray-700 font-medium">Enable web search</span>
+                    </div>
+                    <label className="inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        className="sr-only peer"
+                        checked={useWebSearch}
+                        onChange={(e) => {
+                          setUseWebSearch(e.target.checked);
+                        }}
+                      />
+                      <div className="relative w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                    </label>
+                  </div>
+                  <p className="mt-1 text-xs text-gray-500">
+                    When enabled, fact-checks will include information from web searches.
+                  </p>
                 </div>
 
                 <form onSubmit={handleSubmit} className="space-y-6">
@@ -1021,7 +1075,8 @@ function App() {
           <p className="mt-1">
             <a href="/privacy" className="text-blue-600 hover:underline">Privacy Policy</a> · 
             <a href="/terms" className="text-blue-600 hover:underline ml-2">Terms of Service</a> ·
-            <a href="/about" className="text-blue-600 hover:underline ml-2">About</a>
+            <a href="/about" className="text-blue-600 hover:underline ml-2">About</a> ·
+            <a href="https://buymeacoffee.com/uygarduzgun" className="text-blue-600 hover:underline ml-2" target="_blank" rel="noopener noreferrer">Buy me a coffee</a>
           </p>
         </footer>
       </div>
