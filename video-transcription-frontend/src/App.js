@@ -78,7 +78,7 @@ const extractFactCheckData = (htmlContent) => {
 };
 
 // Component for displaying fact checking results
-const FactCheckResults = ({ htmlContent, onShare, onExport }) => {
+const FactCheckResults = ({ htmlContent, onShare, onExport, webSearchResults }) => {
   const factData = extractFactCheckData(htmlContent);
   
   if (!factData) {
@@ -215,6 +215,17 @@ const FactCheckResults = ({ htmlContent, onShare, onExport }) => {
       return <InformationCircleIcon className="h-10 w-10 text-purple-500" />;
     return <QuestionMarkCircleIcon className="h-10 w-10 text-gray-500" />;
   };
+  
+  // Check if a claim has matching web search
+  const isClaimWebVerified = (claimText) => {
+    if (!webSearchResults || !webSearchResults.length) return false;
+    
+    claimText = claimText.toLowerCase();
+    return webSearchResults.some(result => {
+      const query = result.question.toLowerCase();
+      return claimText.includes(query) || query.includes(claimText);
+    });
+  };
 
   return (
     <div className="space-y-6 animate-fadeIn">
@@ -253,24 +264,36 @@ const FactCheckResults = ({ htmlContent, onShare, onExport }) => {
       <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
         <h3 className="text-xl font-semibold mb-4">Claims Analysis</h3>
         <div className="space-y-4">
-          {factData.findings.map((finding, index) => (
-            <div key={index} className={`p-4 border rounded-lg hover:bg-gray-50 transition-colors ${getBinaryTruthColor(finding.accuracy)}`}>
-              <div className="flex items-start">
-                <div className="flex-shrink-0 mt-1">
-                  {getBinaryTruthIcon(finding.accuracy)}
-                </div>
-                <div className="ml-3 w-full">
-                  <div className="flex justify-between">
-                    <p className="font-medium text-gray-900">{finding.claimText}</p>
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getAccuracyClass(finding.accuracy)}`}>
-                      {finding.accuracy}
-                    </span>
+          {factData.findings.map((finding, index) => {
+            const isWebVerified = isClaimWebVerified(finding.claimText);
+            
+            return (
+              <div key={index} className={`p-4 border rounded-lg hover:bg-gray-50 transition-colors ${getBinaryTruthColor(finding.accuracy)}`}>
+                <div className="flex items-start">
+                  <div className="flex-shrink-0 mt-1">
+                    {getBinaryTruthIcon(finding.accuracy)}
                   </div>
-                  <p className="mt-1 text-sm text-gray-600">{finding.explanation}</p>
+                  <div className="ml-3 w-full">
+                    <div className="flex justify-between">
+                      <div className="flex items-center">
+                        <p className="font-medium text-gray-900">{finding.claimText}</p>
+                        {isWebVerified && (
+                          <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                            <GlobeAltIcon className="h-3 w-3 mr-1" />
+                            Web Verified
+                          </span>
+                        )}
+                      </div>
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getAccuracyClass(finding.accuracy)}`}>
+                        {finding.accuracy}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-sm text-gray-600">{finding.explanation}</p>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
       
@@ -355,7 +378,7 @@ const ModelInfo = ({ models, detectedLanguage }) => {
 };
 
 // Create a new WebSearchResults component
-const WebSearchResults = ({ results }) => {
+const WebSearchResults = ({ results, factCheckData }) => {
   const [expanded, setExpanded] = useState({});
 
   if (!results || results.length === 0) {
@@ -369,50 +392,87 @@ const WebSearchResults = ({ results }) => {
     }));
   };
 
+  // Map search queries to corresponding claim text
+  const findRelatedClaim = (query) => {
+    if (!factCheckData || !factCheckData.findings) return null;
+    
+    // Try to match the search query to a claim
+    const relatedClaim = factCheckData.findings.find(finding => {
+      const claimText = finding.claimText.toLowerCase();
+      const searchQuery = query.toLowerCase();
+      
+      // Check if the search query is contained in the claim or vice versa
+      return claimText.includes(searchQuery) || searchQuery.includes(claimText);
+    });
+    
+    return relatedClaim;
+  };
+
   return (
     <div className="space-y-4">
       <h3 className="text-xl font-semibold mb-4 flex items-center text-gray-800">
         <GlobeAltIcon className="w-6 h-6 mr-2 text-blue-500" />
-        Web Search Results
+        Web-Based Fact Verification
       </h3>
       
-      {results.map((result, index) => (
-        <div 
-          key={index} 
-          className="bg-white rounded-lg p-4 border border-gray-200 shadow-sm hover:shadow-md transition-shadow"
-        >
+      {results.map((result, index) => {
+        const relatedClaim = findRelatedClaim(result.question);
+        
+        return (
           <div 
-            className="flex justify-between items-start cursor-pointer"
-            onClick={() => toggleExpanded(index)}
+            key={index} 
+            className={`bg-white rounded-lg p-4 border border-gray-200 shadow-sm hover:shadow-md transition-shadow ${
+              relatedClaim ? 'border-l-4 border-l-blue-500' : ''
+            }`}
           >
-            <h4 className="font-medium text-gray-900 flex-1">{result.question}</h4>
-            <button className="text-gray-500 hover:text-gray-700 mt-1">
-              {expanded[index] ? 
-                <ChevronUpIcon className="w-5 h-5" /> : 
-                <ChevronDownIcon className="w-5 h-5" />
-              }
-            </button>
-          </div>
-          
-          {expanded[index] && (
-            <div className="mt-3 text-gray-700 bg-gray-50 p-3 rounded-lg">
-              <div dangerouslySetInnerHTML={{ 
-                __html: DOMPurify.sanitize(
-                  result.answer 
-                    ? result.answer
-                        .replace(/\n\n/g, '<br/><br/>')
-                        .replace(/\n/g, '<br/>')
-                    : 'No result available'
-                ) 
-              }} />
-              <div className="mt-2 text-xs text-gray-500">
-                <p>Model: {result.model_used || 'Unknown'}</p>
-                <p>Timestamp: {result.timestamp ? new Date(result.timestamp).toLocaleString() : 'Not available'}</p>
+            <div 
+              className="flex justify-between items-start cursor-pointer"
+              onClick={() => toggleExpanded(index)}
+            >
+              <div className="flex-1">
+                <div className="flex items-start">
+                  <div className="mr-2 mt-1">
+                    <GlobeAltIcon className="h-5 w-5 text-blue-500" />
+                  </div>
+                  <div>
+                    <h4 className="font-medium text-gray-900">{result.question}</h4>
+                    {relatedClaim && (
+                      <div className="mt-1 text-sm text-gray-600 flex items-center">
+                        <CheckCircleIcon className="h-4 w-4 text-green-600 mr-1" />
+                        <span>Verified claim from fact check</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
+              <button className="text-gray-500 hover:text-gray-700 mt-1">
+                {expanded[index] ? 
+                  <ChevronUpIcon className="w-5 h-5" /> : 
+                  <ChevronDownIcon className="w-5 h-5" />
+                }
+              </button>
             </div>
-          )}
-        </div>
-      ))}
+            
+            {expanded[index] && (
+              <div className="mt-3 text-gray-700 bg-gray-50 p-3 rounded-lg">
+                <div dangerouslySetInnerHTML={{ 
+                  __html: DOMPurify.sanitize(
+                    result.answer 
+                      ? result.answer
+                          .replace(/\n\n/g, '<br/><br/>')
+                          .replace(/\n/g, '<br/>')
+                      : 'No result available'
+                  ) 
+                }} />
+                <div className="mt-2 text-xs text-gray-500">
+                  <p>Model: {result.model_used || 'Unknown'}</p>
+                  <p>Timestamp: {result.timestamp ? new Date(result.timestamp).toLocaleString() : 'Not available'}</p>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 };
@@ -1123,6 +1183,7 @@ function App() {
                                 htmlContent={result.image_analysis} 
                                 onShare={handleShare}
                                 onExport={exportAsPDF}
+                                webSearchResults={result.web_search_results}
                               />
                             </motion.section>
                           ) : (
@@ -1134,11 +1195,18 @@ function App() {
                                 <h2 className="text-xl font-semibold mb-4 flex items-center text-gray-800">
                                   <CheckCircleIcon className="w-6 h-6 mr-2 text-blue-500" aria-hidden="true" />
                                   Fact Check Results
+                                  {result.web_search_results && result.web_search_results.length > 0 && (
+                                    <span className="ml-2 flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-50 text-green-700 border border-green-100">
+                                      <GlobeAltIcon className="h-3.5 w-3.5 mr-1" />
+                                      Web-Enhanced Verification
+                                    </span>
+                                  )}
                                 </h2>
                                 <FactCheckResults 
                                   htmlContent={result.fact_check_html} 
                                   onShare={handleShare}
                                   onExport={exportAsPDF}
+                                  webSearchResults={result.web_search_results}
                                 />
                                 
                                 {extractFactCheckData(result.fact_check_html) && (
@@ -1220,7 +1288,7 @@ function App() {
                         transition={{ delay: 0.3 }}
                         className="mt-6 bg-gray-50 rounded-2xl p-6 shadow-sm border border-gray-100"
                       >
-                        <WebSearchResults results={result.web_search_results} />
+                        <WebSearchResults results={result.web_search_results} factCheckData={result.fact_check_html ? extractFactCheckData(result.fact_check_html) : null} />
                       </motion.section>
                     )}
                   </div>
