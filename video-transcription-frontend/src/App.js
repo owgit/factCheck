@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Routes, Route, Link } from 'react-router-dom';
 import { 
   CloudArrowUpIcon, 
   DocumentTextIcon, 
@@ -20,6 +21,11 @@ import {
   GlobeAltIcon
 } from '@heroicons/react/24/outline';
 import DOMPurify from 'dompurify';
+
+// Import new page components
+import PrivacyPolicy from './components/PrivacyPolicy';
+import TermsOfService from './components/TermsOfService';
+import About from './components/About';
 
 const MAX_UPLOAD_SIZE = parseInt(process.env.REACT_APP_MAX_UPLOAD_SIZE || '250', 10);
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
@@ -101,6 +107,14 @@ const FactCheckResults = ({ htmlContent, onShare, onExport }) => {
   const getBinaryTruthColor = (accuracy) => {
     accuracy = accuracy.toLowerCase();
     
+    // Red for inaccurate, false claims and conspiracies
+    if (accuracy.includes('inaccurate') || 
+        accuracy.includes('false') || 
+        accuracy.includes('conspiracy') || 
+        accuracy.includes('misleading')) {
+      return 'bg-red-100 text-red-700 border-red-200';
+    }
+    
     // Green for anything with some degree of truth
     if (accuracy.includes('accurate') || 
         accuracy.includes('mostly true') || 
@@ -108,13 +122,6 @@ const FactCheckResults = ({ htmlContent, onShare, onExport }) => {
         accuracy.includes('expert consensus') ||
         accuracy.includes('based on expert')) {
       return 'bg-green-100 text-green-700 border-green-200';
-    }
-    
-    // Red for false claims and conspiracies
-    if (accuracy.includes('false') || 
-        accuracy.includes('conspiracy') || 
-        accuracy.includes('misleading')) {
-      return 'bg-red-100 text-red-700 border-red-200';
     }
     
     // Gray for unverified or unknown
@@ -144,6 +151,14 @@ const FactCheckResults = ({ htmlContent, onShare, onExport }) => {
   const getBinaryTruthIcon = (accuracy) => {
     accuracy = accuracy.toLowerCase();
     
+    // X for inaccurate, false claims and conspiracies
+    if (accuracy.includes('inaccurate') ||
+        accuracy.includes('false') || 
+        accuracy.includes('conspiracy') || 
+        accuracy.includes('misleading')) {
+      return <XMarkIcon className="w-5 h-5 text-red-500" />;
+    }
+    
     // Checkmark for anything with some degree of truth
     if (accuracy.includes('accurate') || 
         accuracy.includes('mostly true') || 
@@ -153,19 +168,14 @@ const FactCheckResults = ({ htmlContent, onShare, onExport }) => {
       return <CheckIcon className="w-5 h-5 text-green-500" />;
     }
     
-    // X for false claims and conspiracies
-    if (accuracy.includes('false') || 
-        accuracy.includes('conspiracy') || 
-        accuracy.includes('misleading')) {
-      return <XMarkIcon className="w-5 h-5 text-red-500" />;
-    }
-    
     // Question mark for unverified or unknown
     return <QuestionMarkCircleIcon className="w-5 h-5 text-gray-500" />;
   };
 
   const getAccuracyClass = (accuracy) => {
     accuracy = accuracy.toLowerCase();
+    if (accuracy.includes('inaccurate'))
+      return 'bg-red-100 text-red-800';
     if (accuracy.includes('accurate') && !accuracy.includes('mostly') && !accuracy.includes('partly'))
       return 'bg-green-100 text-green-800';
     if (accuracy.includes('mostly true'))
@@ -440,10 +450,95 @@ function App() {
   const [transcriptionOpen, setTranscriptionOpen] = useState(false);
   const [modelInfo, setModelInfo] = useState(null);
   const [detectedLanguage, setDetectedLanguage] = useState(null);
-  const [useWebSearch, setUseWebSearch] = useState(() => {
-    return localStorage.getItem('USE_WEB_SEARCH') !== 'false';
-  });
+  const [useWebSearch, setUseWebSearch] = useState(true); // Default to true until server setting is checked
+  const [webSearchDisabled, setWebSearchDisabled] = useState(false); // Whether checkbox should be disabled
+  const [taskId, setTaskId] = useState(null); // Track task ID for background processing
+  const [pollingInterval, setPollingInterval] = useState(null); // Interval for polling task status
 
+  // Effect to initialize and get models from the backend
+  useEffect(() => {
+    // Fetch model info from the API
+    const fetchModels = async () => {
+      try {
+        const response = await axios.get(`${API_BASE_URL}/models`);
+        
+        // Check if web search is allowed by the server
+        const webSearchAllowed = response.data.features?.web_search?.enabled === true;
+        setWebSearchDisabled(!webSearchAllowed);
+        
+        // If web search is disabled by server, force it to false regardless of local storage
+        if (!webSearchAllowed) {
+          setUseWebSearch(false);
+          localStorage.setItem('USE_WEB_SEARCH', 'false');
+        } else {
+          // Otherwise respect the localStorage setting
+          setUseWebSearch(localStorage.getItem('USE_WEB_SEARCH') !== 'false');
+        }
+      } catch (error) {
+        console.error("Error fetching model information:", error);
+      }
+    };
+    
+    fetchModels();
+  }, []);
+
+  // Effect to clean up polling interval when component unmounts
+  useEffect(() => {
+    return () => {
+      if (pollingInterval) {
+        clearInterval(pollingInterval);
+      }
+    };
+  }, [pollingInterval]);
+
+  // Function to poll task status
+  const pollTaskStatus = useCallback((id) => {
+    if (!id) return;
+    
+    // Clear any existing polling interval
+    if (pollingInterval) {
+      clearInterval(pollingInterval);
+    }
+    
+    // Set up new polling interval
+    const intervalId = setInterval(async () => {
+      try {
+        const response = await axios.get(`${API_BASE_URL}/task/${id}`);
+        const taskData = response.data;
+        
+        // If task is completed or errored, stop polling
+        if (taskData.status === 'completed' || taskData.status === 'error') {
+          clearInterval(intervalId);
+          setPollingInterval(null);
+          setLoading(false);
+          
+          if (taskData.status === 'error') {
+            setError(taskData.error || 'An error occurred during processing');
+          } else {
+            // Store the completed result data
+            setResult(taskData);
+            
+            // Store detected language if available
+            if (taskData.detected_language) {
+              setDetectedLanguage(taskData.detected_language);
+            }
+            
+            // Store model information if available
+            if (taskData.models) {
+              setModelInfo(taskData.models);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error polling task status:', error);
+        // Don't stop polling on error - it might be a temporary network issue
+      }
+    }, 2000); // Poll every 2 seconds
+    
+    setPollingInterval(intervalId);
+  }, [pollingInterval]);
+
+  // Effect to save web search setting to localStorage when it changes
   useEffect(() => {
     localStorage.setItem('USE_WEB_SEARCH', useWebSearch ? 'true' : 'false');
   }, [useWebSearch]);
@@ -490,6 +585,7 @@ function App() {
     setResult(null);
     setStage(1);
     setDetectedLanguage(null);
+    setTaskId(null);
 
     try {
       let response;
@@ -503,6 +599,22 @@ function App() {
         response = await axios.post(`${API_BASE_URL}/fact-check-text`, formData, {
           headers: { 'Content-Type': 'multipart/form-data' },
         });
+        
+        // Set result directly for text input (synchronous)
+        setStage(3);
+        setResult(response.data);
+        
+        // Store detected language if available
+        if (response.data.detected_language) {
+          setDetectedLanguage(response.data.detected_language);
+        }
+        
+        // Store model information if available
+        if (response.data.models) {
+          setModelInfo(response.data.models);
+        }
+        
+        setLoading(false);
       } else {
         // Handle file or Instagram URL submission
         const formData = new FormData();
@@ -516,28 +628,45 @@ function App() {
             if (percentCompleted === 100) setStage(2);
           }
         });
+        
+        // Check if this is a background task (video processing)
+        if (response.data.status === 'processing' && response.data.task_id) {
+          setTaskId(response.data.task_id);
+          setStage(2); // Set to analyzing stage
+          
+          // Start polling for task status
+          pollTaskStatus(response.data.task_id);
+          
+          // Show a temporary result with processing status
+          setResult({
+            status: 'processing',
+            message: 'Video processing is in progress. Results will appear automatically when ready.',
+            task_id: response.data.task_id
+          });
+        } else {
+          // Handle immediate response (images)
+          setStage(3);
+          setResult(response.data);
+          
+          // Store detected language if available
+          if (response.data.detected_language) {
+            setDetectedLanguage(response.data.detected_language);
+          }
+          
+          // Store model information if available
+          if (response.data.models) {
+            setModelInfo(response.data.models);
+          }
+          
+          setLoading(false);
+        }
       }
-
-      setStage(3);
-      setResult(response.data);
-      
-      // Store detected language if available
-      if (response.data.detected_language) {
-        setDetectedLanguage(response.data.detected_language);
-      }
-      
-      // Store model information if available in the response
-      if (response.data.models) {
-        setModelInfo(response.data.models);
-      }
-      
     } catch (error) {
       console.error('API Error:', error.response?.data);
       setError(error.response?.data?.detail || 'An error occurred');
-    } finally {
       setLoading(false);
     }
-  }, [file, instagramLink, freeText, inputMode, useWebSearch]);
+  }, [file, instagramLink, freeText, inputMode, useWebSearch, pollTaskStatus]);
 
   const getFactCheckStatus = useCallback((factCheck) => {
     if (!factCheck) return { status: 'UNKNOWN', color: 'text-yellow-400' };
@@ -657,425 +786,460 @@ function App() {
     <main className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-4xl mx-auto">
         <header className="text-center mb-12">
-          <h1 className="text-4xl font-bold text-gray-800 tracking-tight">
-            AI-Powered Fact Check & Verification
-          </h1>
+          <Link to="/">
+            <h1 className="text-4xl font-bold text-gray-800 tracking-tight hover:text-blue-600 transition-colors">
+              AI-Powered Fact Check & Verification
+            </h1>
+          </Link>
           <p className="mt-3 text-xl text-gray-600">
             Verify claims in videos, Instagram posts, and text with advanced AI fact-checking
           </p>
         </header>
 
-        {/* Add the BuyMeCoffeeButton component */}
         <BuyMeCoffeeButton />
-        
-        <AnimatePresence mode="wait">
-          <motion.section
-            key="form"
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.3 }}
-            className="bg-white rounded-2xl shadow-xl overflow-hidden"
-            aria-labelledby="upload-section"
-          >
-            <div className="p-6 sm:p-8">
-              <div className="flex flex-col space-y-6">
-                {/* Input Type Selector Tabs */}
-                <div className="flex border-b border-gray-200" role="tablist" aria-label="Content type selection">
-                  <button
-                    onClick={() => setInputMode('file')}
-                    className={`flex-1 py-3 text-center border-b-2 font-medium text-sm ${
-                      inputMode === 'file'
-                        ? 'border-blue-500 text-blue-600'
-                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                    }`}
-                    role="tab"
-                    aria-selected={inputMode === 'file'}
-                    aria-controls="file-upload-panel"
-                    id="file-upload-tab"
-                  >
-                    <CloudArrowUpIcon className="w-5 h-5 inline-block mr-1" aria-hidden="true" />
-                    <span>Upload Media</span>
-                  </button>
-                  <button
-                    onClick={() => setInputMode('instagram')}
-                    className={`flex-1 py-3 text-center border-b-2 font-medium text-sm ${
-                      inputMode === 'instagram'
-                        ? 'border-blue-500 text-blue-600'
-                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                    }`}
-                    role="tab"
-                    aria-selected={inputMode === 'instagram'}
-                    aria-controls="instagram-panel"
-                    id="instagram-tab"
-                  >
-                    <span className="inline-block w-5 h-5 mr-1 relative top-[1px]" aria-hidden="true">
-                      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 inline-block">
-                        <path d="M12 2C14.717 2 15.056 2.01 16.122 2.06C17.187 2.11 17.912 2.277 18.55 2.525C19.21 2.779 19.766 3.123 20.322 3.678C20.8305 4.1779 21.224 4.78259 21.475 5.45C21.722 6.087 21.89 6.813 21.94 7.878C21.987 8.944 22 9.283 22 12C22 14.717 21.99 15.056 21.94 16.122C21.89 17.187 21.722 17.912 21.475 18.55C21.2247 19.2178 20.8311 19.8226 20.322 20.322C19.822 20.8303 19.2173 21.2238 18.55 21.475C17.913 21.722 17.187 21.89 16.122 21.94C15.056 21.987 14.717 22 12 22C9.283 22 8.944 21.99 7.878 21.94C6.813 21.89 6.088 21.722 5.45 21.475C4.78233 21.2245 4.17753 20.8309 3.678 20.322C3.16941 19.8222 2.77593 19.2175 2.525 18.55C2.277 17.913 2.11 17.187 2.06 16.122C2.013 15.056 2 14.717 2 12C2 9.283 2.01 8.944 2.06 7.878C2.11 6.812 2.277 6.088 2.525 5.45C2.77524 4.78218 3.1688 4.17732 3.678 3.678C4.17767 3.16923 4.78243 2.77573 5.45 2.525C6.088 2.277 6.812 2.11 7.878 2.06C8.944 2.013 9.283 2 12 2Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                        <path d="M17.5 6.5L17.51 6.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                        <path d="M12 16C14.2091 16 16 14.2091 16 12C16 9.79086 14.2091 8 12 8C9.79086 8 8 9.79086 8 12C8 14.2091 9.79086 16 12 16Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
-                    </span>
-                    <span>Instagram Link</span>
-                  </button>
-                  <button
-                    onClick={() => setInputMode('text')}
-                    className={`flex-1 py-3 text-center border-b-2 font-medium text-sm ${
-                      inputMode === 'text'
-                        ? 'border-blue-500 text-blue-600'
-                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                    }`}
-                    role="tab"
-                    aria-selected={inputMode === 'text'}
-                    aria-controls="text-panel"
-                    id="text-tab"
-                  >
-                    <DocumentTextIcon className="w-5 h-5 inline-block mr-1" aria-hidden="true" />
-                    <span>Free Text</span>
-                  </button>
-                </div>
 
-                {/* Add Web Search Toggle */}
-                <div className="mt-4 bg-gray-50 rounded-lg p-3 border border-gray-200">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center">
-                      <GlobeAltIcon className="h-5 w-5 text-gray-500 mr-2" />
-                      <span className="text-sm text-gray-700 font-medium">Enable web search</span>
-                    </div>
-                    <label className="inline-flex items-center cursor-pointer">
-                      <input
-                        type="checkbox"
-                        className="sr-only peer"
-                        checked={useWebSearch}
-                        onChange={(e) => {
-                          setUseWebSearch(e.target.checked);
-                        }}
-                      />
-                      <div className="relative w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                    </label>
-                  </div>
-                  <p className="mt-1 text-xs text-gray-500">
-                    When enabled, fact-checks will include information from web searches.
-                  </p>
-                </div>
-
-                <form onSubmit={handleSubmit} className="space-y-6">
-                  {/* File Upload Section */}
-                  <div 
-                    role="tabpanel" 
-                    id="file-upload-panel" 
-                    aria-labelledby="file-upload-tab"
-                    hidden={inputMode !== 'file'}
-                  >
-                    {inputMode === 'file' && (
-                      <div 
-                        className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${isDragging ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'}`}
-                        onDragOver={(e) => handleDrag(e, true)}
-                        onDragEnter={(e) => handleDrag(e, true)}
-                        onDragLeave={(e) => handleDrag(e, false)}
-                        onDrop={handleDrop}
-                      >
-                        <input
-                          type="file"
-                          id="file-upload"
-                          className="sr-only"
-                          onChange={(e) => handleFile(e.target.files[0])}
-                          accept=".mp4,.mov,.avi,.jpg,.jpeg,.png,.gif"
-                          aria-describedby="file-upload-description"
-                        />
-                        <label
-                          htmlFor="file-upload"
-                          className="cursor-pointer flex flex-col items-center justify-center"
+        <Routes>
+          <Route path="/" element={
+            <>
+              <AnimatePresence mode="wait">
+                <motion.section
+                  key="form"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.3 }}
+                  className="bg-white rounded-2xl shadow-xl overflow-hidden"
+                  aria-labelledby="upload-section"
+                >
+                  <div className="p-6 sm:p-8">
+                    <div className="flex flex-col space-y-6">
+                      <div className="flex border-b border-gray-200" role="tablist" aria-label="Content type selection">
+                        <button
+                          onClick={() => setInputMode('file')}
+                          className={`flex-1 py-3 text-center border-b-2 font-medium text-sm ${
+                            inputMode === 'file'
+                              ? 'border-blue-500 text-blue-600'
+                              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                          }`}
+                          role="tab"
+                          aria-selected={inputMode === 'file'}
+                          aria-controls="file-upload-panel"
+                          id="file-upload-tab"
                         >
-                          <CloudArrowUpIcon className="w-10 h-10 text-gray-400 mb-2" aria-hidden="true" />
-                          <span className="text-sm font-medium text-gray-900">
-                            {file ? file.name : 'Click to upload or drag and drop'}
+                          <CloudArrowUpIcon className="w-5 h-5 inline-block mr-1" aria-hidden="true" />
+                          <span>Upload Media</span>
+                        </button>
+                        <button
+                          onClick={() => setInputMode('instagram')}
+                          className={`flex-1 py-3 text-center border-b-2 font-medium text-sm ${
+                            inputMode === 'instagram'
+                              ? 'border-blue-500 text-blue-600'
+                              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                          }`}
+                          role="tab"
+                          aria-selected={inputMode === 'instagram'}
+                          aria-controls="instagram-panel"
+                          id="instagram-tab"
+                        >
+                          <span className="inline-block w-5 h-5 mr-1 relative top-[1px]" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 inline-block">
+                              <path d="M12 2C14.717 2 15.056 2.01 16.122 2.06C17.187 2.11 17.912 2.277 18.55 2.525C19.21 2.779 19.766 3.123 20.322 3.678C20.8305 4.1779 21.224 4.78259 21.475 5.45C21.722 6.087 21.89 6.813 21.94 7.878C21.987 8.944 22 9.283 22 12C22 14.717 21.99 15.056 21.94 16.122C21.89 17.187 21.722 17.912 21.475 18.55C21.2247 19.2178 20.8311 19.8226 20.322 20.322C19.822 20.8303 19.2173 21.2238 18.55 21.475C17.913 21.722 17.187 21.89 16.122 21.94C15.056 21.987 14.717 22 12 22C9.283 22 8.944 21.99 7.878 21.94C6.813 21.89 6.088 21.722 5.45 21.475C4.78233 21.2245 4.17753 20.8309 3.678 20.322C3.16941 19.8222 2.77593 19.2175 2.525 18.55C2.277 17.913 2.11 17.187 2.06 16.122C2.013 15.056 2 14.717 2 12C2 9.283 2.01 8.944 2.06 7.878C2.11 6.812 2.277 6.088 2.525 5.45C2.77524 4.78218 3.1688 4.17732 3.678 3.678C4.17767 3.16923 4.78243 2.77573 5.45 2.525C6.088 2.277 6.812 2.11 7.878 2.06C8.944 2.013 9.283 2 12 2Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                              <path d="M17.5 6.5L17.51 6.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                              <path d="M12 16C14.2091 16 16 14.2091 16 12C16 9.79086 14.2091 8 12 8C9.79086 8 8 9.79086 8 12C8 14.2091 9.79086 16 12 16Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>
                           </span>
-                          <p className="text-xs text-gray-500 mt-1" id="file-upload-description">
-                            MP4, MOV, AVI, JPG, JPEG, PNG up to {MAX_UPLOAD_SIZE}MB
-                          </p>
-                          {file && (
-                            <button
-                              type="button"
-                              className="mt-2 text-xs text-red-600 hover:text-red-800"
-                              onClick={(e) => {
-                                e.preventDefault();
-                                setFile(null);
-                              }}
-                              aria-label="Remove file"
-                            >
-                              Remove file
-                            </button>
-                          )}
-                        </label>
+                          <span>Instagram Link</span>
+                        </button>
+                        <button
+                          onClick={() => setInputMode('text')}
+                          className={`flex-1 py-3 text-center border-b-2 font-medium text-sm ${
+                            inputMode === 'text'
+                              ? 'border-blue-500 text-blue-600'
+                              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                          }`}
+                          role="tab"
+                          aria-selected={inputMode === 'text'}
+                          aria-controls="text-panel"
+                          id="text-tab"
+                        >
+                          <DocumentTextIcon className="w-5 h-5 inline-block mr-1" aria-hidden="true" />
+                          <span>Free Text</span>
+                        </button>
                       </div>
-                    )}
-                  </div>
 
-                  {/* Instagram Link Section */}
-                  <div 
-                    role="tabpanel" 
-                    id="instagram-panel" 
-                    aria-labelledby="instagram-tab"
-                    hidden={inputMode !== 'instagram'}
-                  >
-                    {inputMode === 'instagram' && (
-                      <div>
-                        <label htmlFor="instagram-url" className="block text-sm font-medium text-gray-700 mb-2">
-                          Instagram Post URL
-                        </label>
-                        <div className="mt-1 flex rounded-md shadow-sm">
-                          <div className="relative flex items-stretch flex-grow">
-                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                              <span className="text-gray-500 sm:text-sm" aria-hidden="true">
-                                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-5 h-5">
-                                  <path d="M12 2C14.717 2 15.056 2.01 16.122 2.06C17.187 2.11 17.912 2.277 18.55 2.525C19.21 2.779 19.766 3.123 20.322 3.678C20.8305 4.1779 21.224 4.78259 21.475 5.45C21.722 6.087 21.89 6.813 21.94 7.878C21.987 8.944 22 9.283 22 12C22 14.717 21.99 15.056 21.94 16.122C21.89 17.187 21.722 17.912 21.475 18.55C21.2247 19.2178 20.8311 19.8226 20.322 20.322C19.822 20.8303 19.2173 21.2238 18.55 21.475C17.913 21.722 17.187 21.89 16.122 21.94C15.056 21.987 14.717 22 12 22C9.283 22 8.944 21.99 7.878 21.94C6.813 21.89 6.088 21.722 5.45 21.475C4.78233 21.2245 4.17753 20.8309 3.678 20.322C3.16941 19.8222 2.77593 19.2175 2.525 18.55C2.277 17.913 2.11 17.187 2.06 16.122C2.013 15.056 2 14.717 2 12C2 9.283 2.01 8.944 2.06 7.878C2.11 6.812 2.277 6.088 2.525 5.45C2.77524 4.78218 3.1688 4.17732 3.678 3.678C4.17767 3.16923 4.78243 2.77573 5.45 2.525C6.088 2.277 6.812 2.11 7.878 2.06C8.944 2.013 9.283 2 12 2Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                                  <path d="M17.5 6.5L17.51 6.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                                  <path d="M12 16C14.2091 16 16 14.2091 16 12C16 9.79086 14.2091 8 12 8C9.79086 8 8 9.79086 8 12C8 14.2091 9.79086 16 12 16Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                                </svg>
-                              </span>
-                            </div>
-                            <input
-                              type="text"
-                              id="instagram-url"
-                              value={instagramLink}
-                              onChange={e => setInstagramLink(e.target.value)}
-                              placeholder="https://www.instagram.com/p/..."
-                              className="focus:ring-blue-500 focus:border-blue-500 block w-full rounded-md pl-10 sm:text-sm border-gray-300"
-                              aria-describedby="instagram-url-description"
-                            />
+                      <div className="mt-4 bg-gray-50 rounded-lg p-3 border border-gray-200">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center">
+                            <GlobeAltIcon className="h-5 w-5 text-gray-500 mr-2" />
+                            <span className={`text-sm font-medium ${webSearchDisabled ? 'text-gray-400' : 'text-gray-700'}`}>
+                              Enable web search
+                              {webSearchDisabled && <span className="ml-2 text-xs text-red-500">(Disabled by server)</span>}
+                            </span>
                           </div>
+                          <label className={`inline-flex items-center ${webSearchDisabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}>
+                            <input
+                              type="checkbox"
+                              className="sr-only peer"
+                              checked={useWebSearch}
+                              onChange={(e) => {
+                                if (!webSearchDisabled) {
+                                  setUseWebSearch(e.target.checked);
+                                }
+                              }}
+                              disabled={webSearchDisabled}
+                            />
+                            <div className={`relative w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all ${useWebSearch ? 'peer-checked:bg-blue-600' : ''}`}></div>
+                          </label>
                         </div>
-                        <p className="mt-2 text-sm text-gray-500" id="instagram-url-description">
-                          Paste a direct link to an Instagram post or reel
+                        <p className="mt-1 text-xs text-gray-500">
+                          {webSearchDisabled 
+                            ? "Web search is disabled by server configuration. Please contact the administrator to enable this feature."
+                            : "When enabled, fact-checks will include information from web searches for more accurate results."}
                         </p>
                       </div>
-                    )}
-                  </div>
 
-                  {/* Free Text Section */}
+                      <form onSubmit={handleSubmit} className="space-y-6">
+                        <div 
+                          role="tabpanel" 
+                          id="file-upload-panel" 
+                          aria-labelledby="file-upload-tab"
+                          hidden={inputMode !== 'file'}
+                        >
+                          {inputMode === 'file' && (
+                            <div 
+                              className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${isDragging ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'}`}
+                              onDragOver={(e) => handleDrag(e, true)}
+                              onDragEnter={(e) => handleDrag(e, true)}
+                              onDragLeave={(e) => handleDrag(e, false)}
+                              onDrop={handleDrop}
+                            >
+                              <input
+                                type="file"
+                                id="file-upload"
+                                className="sr-only"
+                                onChange={(e) => handleFile(e.target.files[0])}
+                                accept=".mp4,.mov,.avi,.jpg,.jpeg,.png,.gif"
+                                aria-describedby="file-upload-description"
+                              />
+                              <label
+                                htmlFor="file-upload"
+                                className="cursor-pointer flex flex-col items-center justify-center"
+                              >
+                                <CloudArrowUpIcon className="w-10 h-10 text-gray-400 mb-2" aria-hidden="true" />
+                                <span className="text-sm font-medium text-gray-900">
+                                  {file ? file.name : 'Click to upload or drag and drop'}
+                                </span>
+                                <p className="text-xs text-gray-500 mt-1" id="file-upload-description">
+                                  MP4, MOV, AVI, JPG, JPEG, PNG up to {MAX_UPLOAD_SIZE}MB
+                                </p>
+                                {file && (
+                                  <button
+                                    type="button"
+                                    className="mt-2 text-xs text-red-600 hover:text-red-800"
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      setFile(null);
+                                    }}
+                                    aria-label="Remove file"
+                                  >
+                                    Remove file
+                                  </button>
+                                )}
+                              </label>
+                            </div>
+                          )}
+                        </div>
+
+                        <div 
+                          role="tabpanel" 
+                          id="instagram-panel" 
+                          aria-labelledby="instagram-tab"
+                          hidden={inputMode !== 'instagram'}
+                        >
+                          {inputMode === 'instagram' && (
+                            <div>
+                              <label htmlFor="instagram-url" className="block text-sm font-medium text-gray-700 mb-2">
+                                Instagram Post URL
+                              </label>
+                              <div className="mt-1 flex rounded-md shadow-sm">
+                                <div className="relative flex items-stretch flex-grow">
+                                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                    <span className="text-gray-500 sm:text-sm" aria-hidden="true">
+                                      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-5 h-5">
+                                        <path d="M12 2C14.717 2 15.056 2.01 16.122 2.06C17.187 2.11 17.912 2.277 18.55 2.525C19.21 2.779 19.766 3.123 20.322 3.678C20.8305 4.1779 21.224 4.78259 21.475 5.45C21.722 6.087 21.89 6.813 21.94 7.878C21.987 8.944 22 9.283 22 12C22 14.717 21.99 15.056 21.94 16.122C21.89 17.187 21.722 17.912 21.475 18.55C21.2247 19.2178 20.8311 19.8226 20.322 20.322C19.822 20.8303 19.2173 21.2238 18.55 21.475C17.913 21.722 17.187 21.89 16.122 21.94C15.056 21.987 14.717 22 12 22C9.283 22 8.944 21.99 7.878 21.94C6.813 21.89 6.088 21.722 5.45 21.475C4.78233 21.2245 4.17753 20.8309 3.678 20.322C3.16941 19.8222 2.77593 19.2175 2.525 18.55C2.277 17.913 2.11 17.187 2.06 16.122C2.013 15.056 2 14.717 2 12C2 9.283 2.01 8.944 2.06 7.878C2.11 6.812 2.277 6.088 2.525 5.45C2.77524 4.78218 3.1688 4.17732 3.678 3.678C4.17767 3.16923 4.78243 2.77573 5.45 2.525C6.088 2.277 6.812 2.11 7.878 2.06C8.944 2.013 9.283 2 12 2Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                        <path d="M17.5 6.5L17.51 6.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                        <path d="M12 16C14.2091 16 16 14.2091 16 12C16 9.79086 14.2091 8 12 8C9.79086 8 8 9.79086 8 12C8 14.2091 9.79086 16 12 16Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                      </svg>
+                                    </span>
+                                  </div>
+                                  <input
+                                    type="text"
+                                    id="instagram-url"
+                                    value={instagramLink}
+                                    onChange={e => setInstagramLink(e.target.value)}
+                                    placeholder="https://www.instagram.com/p/..."
+                                    className="focus:ring-blue-500 focus:border-blue-500 block w-full rounded-md pl-10 sm:text-sm border-gray-300"
+                                    aria-describedby="instagram-url-description"
+                                  />
+                                </div>
+                              </div>
+                              <p className="mt-2 text-sm text-gray-500" id="instagram-url-description">
+                                Paste a direct link to an Instagram post or reel
+                              </p>
+                            </div>
+                          )}
+                        </div>
+
+                        <div 
+                          role="tabpanel" 
+                          id="text-panel" 
+                          aria-labelledby="text-tab"
+                          hidden={inputMode !== 'text'}
+                        >
+                          {inputMode === 'text' && (
+                            <div>
+                              <label htmlFor="free-text" className="block text-sm font-medium text-gray-700 mb-2">
+                                Enter Text to Fact-Check
+                              </label>
+                              <textarea
+                                id="free-text"
+                                value={freeText}
+                                onChange={e => setFreeText(e.target.value)}
+                                rows={8}
+                                className="shadow-sm focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border-gray-300 rounded-md"
+                                placeholder="Enter any text, claim, or statement you want to fact-check..."
+                                aria-describedby="free-text-description"
+                              ></textarea>
+                              <p className="mt-2 text-sm text-gray-500" id="free-text-description">
+                                Enter claims, news snippets, or any text you want to verify
+                              </p>
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="flex items-center justify-center">
+                          <button
+                            type="submit"
+                            disabled={loading}
+                            className={`flex justify-center items-center py-2 px-6 border border-transparent rounded-md shadow-sm text-sm font-medium text-white ${
+                              loading
+                                ? 'bg-blue-300 cursor-not-allowed'
+                                : 'bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500'
+                            }`}
+                            aria-live="polite"
+                            aria-busy={loading}
+                          >
+                            {loading ? (
+                              <>
+                                <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" aria-hidden="true">
+                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                {stageLabels[stage] || 'Processing'}
+                              </>
+                            ) : inputMode === 'file' ? (
+                              'Upload & Analyze'
+                            ) : inputMode === 'instagram' ? (
+                              'Process Instagram Post'
+                            ) : (
+                              'Fact Check Text'
+                            )}
+                          </button>
+                        </div>
+                      </form>
+
+                      {error && (
+                        <div className="mt-4 text-center text-red-500" role="alert" aria-live="assertive">
+                          {error}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </motion.section>
+              </AnimatePresence>
+
+              {result && (
+                <motion.article
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: 0.2 }}
+                  className="mt-6 bg-white rounded-2xl p-6 shadow-sm border border-gray-200"
+                >
                   <div 
-                    role="tabpanel" 
-                    id="text-panel" 
-                    aria-labelledby="text-tab"
-                    hidden={inputMode !== 'text'}
+                    id="fact-check-results"
+                    className="space-y-6"
                   >
-                    {inputMode === 'text' && (
-                      <div>
-                        <label htmlFor="free-text" className="block text-sm font-medium text-gray-700 mb-2">
-                          Enter Text to Fact-Check
-                        </label>
-                        <textarea
-                          id="free-text"
-                          value={freeText}
-                          onChange={e => setFreeText(e.target.value)}
-                          rows={8}
-                          className="shadow-sm focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border-gray-300 rounded-md"
-                          placeholder="Enter any text, claim, or statement you want to fact-check..."
-                          aria-describedby="free-text-description"
-                        ></textarea>
-                        <p className="mt-2 text-sm text-gray-500" id="free-text-description">
-                          Enter claims, news snippets, or any text you want to verify
-                        </p>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="flex items-center justify-center">
-                    <button
-                      type="submit"
-                      disabled={loading}
-                      className={`flex justify-center items-center py-2 px-6 border border-transparent rounded-md shadow-sm text-sm font-medium text-white ${
-                        loading
-                          ? 'bg-blue-300 cursor-not-allowed'
-                          : 'bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500'
-                      }`}
-                      aria-live="polite"
-                      aria-busy={loading}
-                    >
-                      {loading ? (
-                        <>
-                          <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" aria-hidden="true">
+                    {/* Processing State for Video */}
+                    {result.status === 'processing' ? (
+                      <div className="flex flex-col items-center justify-center py-8">
+                        <div className="animate-spin mb-4">
+                          <svg className="w-12 h-12 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" aria-hidden="true">
                             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                           </svg>
-                          {stageLabels[stage] || 'Processing'}
-                        </>
-                      ) : inputMode === 'file' ? (
-                        'Upload & Analyze'
-                      ) : inputMode === 'instagram' ? (
-                        'Process Instagram Post'
-                      ) : (
-                        'Fact Check Text'
-                      )}
-                    </button>
-                  </div>
-                </form>
-
-                {error && (
-                  <div className="mt-4 text-center text-red-500" role="alert" aria-live="assertive">
-                    {error}
-                  </div>
-                )}
-              </div>
-            </div>
-          </motion.section>
-        </AnimatePresence>
-
-        {result && (
-          <motion.article
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.2 }}
-            className="mt-6 bg-white rounded-2xl p-6 shadow-sm border border-gray-200"
-          >
-            <div 
-              id="fact-check-results"
-              className="space-y-6"
-            >
-              <div 
-                className="bg-green-50 border-l-4 border-green-500 p-4 rounded-lg mb-6"
-                role="status"
-              >
-                <div className="flex">
-                  <div className="flex-shrink-0">
-                    <CheckCircleIcon className="h-5 w-5 text-green-500" aria-hidden="true" />
-                  </div>
-                  <div className="ml-3">
-                    <p className="text-sm font-medium text-green-800">
-                      Analysis Complete
-                    </p>
-                    <p className="text-xs text-green-700 mt-1">
-                      Scroll down to see the detailed fact-checking results below.
-                    </p>
-                  </div>
-                </div>
-                
-                {modelInfo && <ModelInfo models={modelInfo} detectedLanguage={detectedLanguage} />}
-              </div>
-
-              <div ref={factCheckContentRef}>
-                {result.image_analysis ? (
-                  <motion.section 
-                    whileHover={{ scale: 1.01 }} 
-                    className="bg-gray-50 rounded-2xl p-6 shadow-sm border border-gray-100"
-                  >
-                    <h2 className="text-xl font-semibold mb-4 flex items-center text-gray-800">
-                      <PhotoIcon className="w-6 h-6 mr-2 text-blue-500" aria-hidden="true" />
-                      Image Fact Check
-                    </h2>
-                    <FactCheckResults 
-                      htmlContent={result.image_analysis} 
-                      onShare={handleShare}
-                      onExport={exportAsPDF}
-                    />
-                  </motion.section>
-                ) : (
-                  <>
-                    <motion.section 
-                      whileHover={{ scale: 1.01 }} 
-                      className="bg-gray-50 rounded-2xl p-6 shadow-sm border border-gray-100"
-                    >
-                      <h2 className="text-xl font-semibold mb-4 flex items-center text-gray-800">
-                        <CheckCircleIcon className="w-6 h-6 mr-2 text-blue-500" aria-hidden="true" />
-                        Fact Check Results
-                      </h2>
-                      <FactCheckResults 
-                        htmlContent={result.fact_check_html} 
-                        onShare={handleShare}
-                        onExport={exportAsPDF}
-                      />
-                      
-                      {/* Add structured data for fact check results */}
-                      {extractFactCheckData(result.fact_check_html) && (
-                        <script type="application/ld+json" dangerouslySetInnerHTML={{
-                          __html: JSON.stringify({
-                            "@context": "https://schema.org",
-                            "@type": "ClaimReview",
-                            "url": window.location.href,
-                            "itemReviewed": {
-                              "@type": "Claim",
-                              "appearance": {
-                                "@type": "CreativeWork",
-                                "name": "User submitted content"
-                              }
-                            },
-                            "author": {
-                              "@type": "Organization",
-                              "name": "AI-Powered Fact Check"
-                            },
-                            "reviewRating": {
-                              "@type": "Rating",
-                              "ratingValue": extractFactCheckData(result.fact_check_html).result.toLowerCase().includes("accurate") ? "5" : "1",
-                              "bestRating": "5",
-                              "worstRating": "1",
-                              "alternateName": extractFactCheckData(result.fact_check_html).result
-                            },
-                            "claimReviewed": extractFactCheckData(result.fact_check_html).findings.map(f => f.claimText).join("; ")
-                          })
-                        }} />
-                      )}
-                    </motion.section>
-                    <motion.section 
-                      whileHover={{ scale: 1.01 }} 
-                      className="bg-gray-50 rounded-2xl p-6 shadow-sm border border-gray-100"
-                    >
-                      <h2 
-                        onClick={() => setTranscriptionOpen(prev => !prev)}
-                        className="text-xl font-semibold mb-4 flex items-center justify-between text-gray-800 cursor-pointer select-none"
-                        aria-expanded={transcriptionOpen}
-                        aria-controls="transcription-content"
-                      >
-                        <div className="flex items-center">
-                          <DocumentTextIcon className="w-6 h-6 mr-2 text-blue-500" aria-hidden="true" />
-                          Transcription
                         </div>
-                        <button 
-                          className="text-gray-500 hover:text-gray-700"
-                          aria-label={transcriptionOpen ? "Collapse transcription" : "Expand transcription"}
-                        >
-                          {transcriptionOpen ? 
-                            <ChevronUpIcon className="w-5 h-5" aria-hidden="true" /> : 
-                            <ChevronDownIcon className="w-5 h-5" aria-hidden="true" />
-                          }
-                        </button>
-                      </h2>
-                      {transcriptionOpen && (
+                        <h3 className="text-xl font-semibold text-gray-800 mb-2">Video Processing</h3>
+                        <p className="text-gray-600 text-center max-w-md">
+                          Your video is being transcribed and fact-checked. This may take a few minutes depending on the length of the video.
+                        </p>
+                        <p className="text-gray-500 text-sm mt-4">
+                          The results will appear automatically when ready. Please don't close this window.
+                        </p>
+                      </div>
+                    ) : (
+                      <>
                         <div 
-                          id="transcription-content"
-                          className="bg-white p-4 rounded-xl overflow-auto text-gray-700 border border-gray-100"
+                          className="bg-green-50 border-l-4 border-green-500 p-4 rounded-lg mb-6"
+                          role="status"
                         >
-                          {result.transcription.split('\n').map((paragraph, index) => (
-                            <p key={index} className="mb-4">{paragraph}</p>
-                          ))}
+                          <div className="flex">
+                            <div className="flex-shrink-0">
+                              <CheckCircleIcon className="h-5 w-5 text-green-500" aria-hidden="true" />
+                            </div>
+                            <div className="ml-3">
+                              <p className="text-sm font-medium text-green-800">
+                                Analysis Complete
+                              </p>
+                              <p className="text-xs text-green-700 mt-1">
+                                Scroll down to see the detailed fact-checking results below.
+                              </p>
+                            </div>
+                          </div>
+                          
+                          {modelInfo && <ModelInfo models={modelInfo} detectedLanguage={detectedLanguage} />}
                         </div>
-                      )}
-                    </motion.section>
-                  </>
-                )}
-              </div>
 
-              {/* Add Web Search Results if available */}
-              {result && result.web_search_results && result.web_search_results.length > 0 && (
-                <motion.section 
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.3 }}
-                  className="mt-6 bg-gray-50 rounded-2xl p-6 shadow-sm border border-gray-100"
-                >
-                  <WebSearchResults results={result.web_search_results} />
-                </motion.section>
+                        <div ref={factCheckContentRef}>
+                          {result.image_analysis ? (
+                            <motion.section 
+                              whileHover={{ scale: 1.01 }} 
+                              className="bg-gray-50 rounded-2xl p-6 shadow-sm border border-gray-100"
+                            >
+                              <h2 className="text-xl font-semibold mb-4 flex items-center text-gray-800">
+                                <PhotoIcon className="w-6 h-6 mr-2 text-blue-500" aria-hidden="true" />
+                                Image Fact Check
+                              </h2>
+                              <FactCheckResults 
+                                htmlContent={result.image_analysis} 
+                                onShare={handleShare}
+                                onExport={exportAsPDF}
+                              />
+                            </motion.section>
+                          ) : (
+                            <>
+                              <motion.section 
+                                whileHover={{ scale: 1.01 }} 
+                                className="bg-gray-50 rounded-2xl p-6 shadow-sm border border-gray-100"
+                              >
+                                <h2 className="text-xl font-semibold mb-4 flex items-center text-gray-800">
+                                  <CheckCircleIcon className="w-6 h-6 mr-2 text-blue-500" aria-hidden="true" />
+                                  Fact Check Results
+                                </h2>
+                                <FactCheckResults 
+                                  htmlContent={result.fact_check_html} 
+                                  onShare={handleShare}
+                                  onExport={exportAsPDF}
+                                />
+                                
+                                {extractFactCheckData(result.fact_check_html) && (
+                                  <script type="application/ld+json" dangerouslySetInnerHTML={{
+                                    __html: JSON.stringify({
+                                      "@context": "https://schema.org",
+                                      "@type": "ClaimReview",
+                                      "url": window.location.href,
+                                      "itemReviewed": {
+                                        "@type": "Claim",
+                                        "appearance": {
+                                          "@type": "CreativeWork",
+                                          "name": "User submitted content"
+                                        }
+                                      },
+                                      "author": {
+                                        "@type": "Organization",
+                                        "name": "AI-Powered Fact Check"
+                                      },
+                                      "reviewRating": {
+                                        "@type": "Rating",
+                                        "ratingValue": extractFactCheckData(result.fact_check_html).result.toLowerCase().includes("accurate") ? "5" : "1",
+                                        "bestRating": "5",
+                                        "worstRating": "1",
+                                        "alternateName": extractFactCheckData(result.fact_check_html).result
+                                      },
+                                      "claimReviewed": extractFactCheckData(result.fact_check_html).findings.map(f => f.claimText).join("; ")
+                                    })
+                                  }} />
+                                )}
+                              </motion.section>
+                              {result.transcription && (
+                                <motion.section 
+                                  whileHover={{ scale: 1.01 }} 
+                                  className="bg-gray-50 rounded-2xl p-6 shadow-sm border border-gray-100"
+                                >
+                                  <h2 
+                                    onClick={() => setTranscriptionOpen(prev => !prev)}
+                                    className="text-xl font-semibold mb-4 flex items-center justify-between text-gray-800 cursor-pointer select-none"
+                                    aria-expanded={transcriptionOpen}
+                                    aria-controls="transcription-content"
+                                  >
+                                    <div className="flex items-center">
+                                      <DocumentTextIcon className="w-6 h-6 mr-2 text-blue-500" aria-hidden="true" />
+                                      Transcription
+                                    </div>
+                                    <button 
+                                      className="text-gray-500 hover:text-gray-700"
+                                      aria-label={transcriptionOpen ? "Collapse transcription" : "Expand transcription"}
+                                    >
+                                      {transcriptionOpen ? 
+                                        <ChevronUpIcon className="w-5 h-5" aria-hidden="true" /> : 
+                                        <ChevronDownIcon className="w-5 h-5" aria-hidden="true" />
+                                      }
+                                    </button>
+                                  </h2>
+                                  {transcriptionOpen && (
+                                    <div 
+                                      id="transcription-content"
+                                      className="bg-white p-4 rounded-xl overflow-auto text-gray-700 border border-gray-100"
+                                    >
+                                      {result.transcription.split('\n').map((paragraph, index) => (
+                                        <p key={index} className="mb-4">{paragraph}</p>
+                                      ))}
+                                    </div>
+                                  )}
+                                </motion.section>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      </>
+                    )}
+
+                    {result && result.web_search_results && result.web_search_results.length > 0 && (
+                      <motion.section 
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.3 }}
+                        className="mt-6 bg-gray-50 rounded-2xl p-6 shadow-sm border border-gray-100"
+                      >
+                        <WebSearchResults results={result.web_search_results} />
+                      </motion.section>
+                    )}
+                  </div>
+                </motion.article>
               )}
-            </div>
-          </motion.article>
-        )}
+            </>
+          }/>
+
+          <Route path="/privacy" element={<PrivacyPolicy />} />
+          <Route path="/terms" element={<TermsOfService />} />
+          <Route path="/about" element={<About />} />
+        </Routes>
         
         <footer className="mt-12 text-center text-sm text-gray-500">
           <p>&copy; {new Date().getFullYear()} Fact Check - AI-Powered Verification Tool</p>
           <p className="mt-1">
-            <a href="/privacy" className="text-blue-600 hover:underline">Privacy Policy</a> · 
-            <a href="/terms" className="text-blue-600 hover:underline ml-2">Terms of Service</a> ·
-            <a href="/about" className="text-blue-600 hover:underline ml-2">About</a> ·
+            <Link to="/privacy" className="text-blue-600 hover:underline">Privacy Policy</Link> · 
+            <Link to="/terms" className="text-blue-600 hover:underline ml-2">Terms of Service</Link> ·
+            <Link to="/about" className="text-blue-600 hover:underline ml-2">About</Link> ·
             <a href="https://buymeacoffee.com/uygarduzgun" className="text-blue-600 hover:underline ml-2" target="_blank" rel="noopener noreferrer">Buy me a coffee</a>
           </p>
         </footer>

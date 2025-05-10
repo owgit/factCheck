@@ -7,6 +7,7 @@ import requests
 import traceback
 import re  # Ensure re is imported at the module level
 import json  # Add json import at the module level
+import uuid  # Add UUID for task tracking
 from fastapi import FastAPI, File, UploadFile, HTTPException, Form, BackgroundTasks
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -106,6 +107,9 @@ else:
 UPLOAD_DIRECTORY = os.path.join(os.path.dirname(__file__), "uploads")
 os.makedirs(UPLOAD_DIRECTORY, exist_ok=True)
 os.chmod(UPLOAD_DIRECTORY, 0o755)
+
+# Add a task tracking dictionary
+task_results = {}
 
 def cleanup_old_files():
     current_time = datetime.now()
@@ -655,7 +659,7 @@ def analyze_image(image_path, should_use_web_search=True):
         "web_search_results": None
     }
 
-async def process_video(video_path, should_use_web_search=True):
+async def process_video(video_path, should_use_web_search=True, task_id=None):
     try:
         audio_path = os.path.join(UPLOAD_DIRECTORY, "extracted_audio.wav")
         video = VideoFileClip(video_path)
@@ -742,8 +746,7 @@ async def process_video(video_path, should_use_web_search=True):
         if os.path.exists(audio_path):
             os.remove(audio_path)
 
-        # Include model information in the response
-        return JSONResponse(content={
+        result_data = {
             "transcription": transcription_text,
             "fact_check_html": fact_check_html,
             "detected_language": detected_language,
@@ -753,10 +756,20 @@ async def process_video(video_path, should_use_web_search=True):
                 "fact_check": {"name": FACT_CHECK_MODEL},
                 "web_search": WEB_SEARCH_MODEL if should_use_web_search and web_search_results else "Not used",
                 "web_search_enabled": should_use_web_search
-            }
-        })
+            },
+            "status": "completed",
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        # If we have a task_id, store the results
+        if task_id:
+            task_results[task_id] = result_data
+            logger.info(f"Stored results for task {task_id}")
+            
+        return JSONResponse(content=result_data)
     except Exception as e:
-        logging.error(f"Error processing video: {str(e)}")
+        error_msg = f"Error processing video: {str(e)}"
+        logging.error(error_msg)
         
         # Clean up files in case of error
         for path in [video_path, audio_path]:
@@ -765,8 +778,31 @@ async def process_video(video_path, should_use_web_search=True):
                     os.remove(path)
                 except Exception as cleanup_error:
                     logger.warning(f"Error cleaning up file {path}: {str(cleanup_error)}")
+        
+        # If we have a task_id, store the error
+        if task_id:
+            task_results[task_id] = {
+                "status": "error",
+                "error": error_msg,
+                "timestamp": datetime.now().isoformat()
+            }
+            logger.info(f"Stored error for task {task_id}")
                     
-        raise HTTPException(status_code=500, detail=f"Error processing video: {str(e)}")
+        raise HTTPException(status_code=500, detail=error_msg)
+
+# Schedule periodic task cleanup to run every hour
+@app.on_event("startup")
+async def setup_periodic_cleanup():
+    import asyncio
+    
+    async def run_periodic_cleanup():
+        while True:
+            cleanup_old_files()
+            cleanup_old_tasks()
+            await asyncio.sleep(3600)  # Run once per hour
+    
+    # Start the background task
+    asyncio.create_task(run_periodic_cleanup())
 
 def download_instagram_video(url: str) -> str:
     """Download video from Instagram with better error handling and fallback mechanism"""
@@ -1332,10 +1368,16 @@ async def upload_file(
         # Process the media file based on its type
         if media_path.lower().endswith(('.mp4', '.mov', '.avi')):
             logger.info(f"Processing video: {media_path}")
-            # Pass should_use_web_search to process_video
-            background_tasks.add_task(process_video, media_path, should_use_web_search)
-            # Immediate response for background task
-            return JSONResponse(content={"message": "Video processing started. Results will be available shortly.", "status": "processing"}, status_code=202)
+            # Generate a task ID for tracking
+            task_id = str(uuid.uuid4())
+            # Pass should_use_web_search and task_id to process_video
+            background_tasks.add_task(process_video, media_path, should_use_web_search, task_id)
+            # Immediate response for background task with task_id
+            return JSONResponse(content={
+                "message": "Video processing started. Results will be available shortly.", 
+                "status": "processing",
+                "task_id": task_id
+            }, status_code=202)
         
         elif media_path.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
             logger.info(f"Processing image: {media_path}")
@@ -1510,6 +1552,45 @@ async def fact_check_text(text: str = Form(...), use_web_search: str = Form('tru
     except Exception as e:
         logger.error(f"Error fact-checking text: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error fact-checking text: {str(e)}")
+
+@app.get("/task/{task_id}")
+async def get_task_status(task_id: str):
+    """Get the status of a background task by its ID"""
+    try:
+        # Check if task exists in our tracking dictionary
+        if task_id not in task_results:
+            raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
+        
+        # Return the task result
+        return JSONResponse(content=task_results[task_id])
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error retrieving task status: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error retrieving task status: {str(e)}")
+
+# Clean up old tasks to prevent memory leaks
+def cleanup_old_tasks():
+    """Remove task results older than 24 hours to prevent memory leaks"""
+    current_time = datetime.now()
+    to_remove = []
+    
+    # Find old tasks
+    for task_id, result in task_results.items():
+        if 'timestamp' in result:
+            try:
+                timestamp = datetime.fromisoformat(result['timestamp'])
+                if current_time - timestamp > timedelta(hours=24):
+                    to_remove.append(task_id)
+            except (ValueError, TypeError):
+                # If timestamp is invalid, add to removal list
+                to_remove.append(task_id)
+    
+    # Remove old tasks
+    for task_id in to_remove:
+        task_results.pop(task_id, None)
+        
+    logger.debug(f"Cleaned up {len(to_remove)} old tasks")
 
 if __name__ == "__main__":
     import uvicorn

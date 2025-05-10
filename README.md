@@ -1,4 +1,11 @@
-# AI-Powered Fact Check Tool | Video & Instagram Content Verification
+# AI-Powered Fact Check Tool
+
+![2](https://github.com/user-attachments/assets/b9df478c-ab60-44ef-9b99-9a73de056c68)
+![1](https://github.com/user-attachments/assets/1d76a336-938b-46e4-89ee-a02856efe8f9)
+
+## Overview
+
+An AI-powered fact-checking application that automatically transcribes, analyzes, and verifies claims from videos, Instagram content, and text. This tool helps combat misinformation by providing evidence-based verification with accurate source references.
 
 [![Python](https://img.shields.io/badge/Python-3.9%2B-blue)](https://www.python.org/)
 [![OpenAI](https://img.shields.io/badge/OpenAI-API-green)](https://openai.com/)
@@ -6,30 +13,15 @@
 [![React](https://img.shields.io/badge/React-Frontend-61DAFB)](https://reactjs.org/)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED)](https://www.docker.com/)
 
-## Automated Video Verification & Fact-Checking Platform
-
-An AI-powered fact-checking application that automatically transcribes, analyzes, and verifies claims from videos, Instagram content, and text. Using OpenAI's GPT-4o and Whisper models, this tool helps combat misinformation by providing evidence-based verification with accurate source references.
-
-### Key Features
-
-- 🎬 **Multi-Source Verification**: Process videos, Instagram posts, and free text input
-- 🔊 **AI Transcription**: Convert speech to text using OpenAI's Whisper model
-- ✅ **Advanced Fact Checking**: Verify claims using OpenAI's GPT-4o with web search capabilities
-- 🔍 **Claim Detection**: Automatically extract and analyze factual statements
-- 📱 **User-Friendly Interface**: Intuitive tabbed design for different input methods
-- 📊 **Detailed Verification Reports**: Comprehensive fact-check results with reliability scores and sources
-- 🌐 **Multilingual Support**: Automatically detects input language and responds accordingly
-- 📑 **Web Search Integration**: Cross-references claims with online information sources
-
 ## Features
 
-- 🎬 **Video Upload**: Support for various video formats (mp4, mov, avi)
-- 🔊 **Automatic Transcription**: Convert speech to text using OpenAI's Whisper model
-- ✅ **AI Fact Checking**: Verify claims using OpenAI's GPT-4o
-- 🔍 **Image Analysis**: Extract and analyze visual content from videos
-- 📱 **Responsive UI**: User-friendly interface for uploading and reviewing results
-- 📊 **Detailed Reports**: Get comprehensive fact-check reports with sources
-- 🌐 **Multilingual Support**: Automatically detects input language and responds in the same language for transcription, fact-checking, and image analysis
+- **Multi-Source Verification**: Process videos, Instagram posts, and free text input
+- **AI Transcription**: Convert speech to text using OpenAI's Whisper model
+- **Advanced Fact Checking**: Verify claims using OpenAI's GPT-4o with web search capabilities
+- **Claim Detection**: Automatically extract and analyze factual statements
+- **Image Analysis**: Extract and analyze visual content from videos
+- **Detailed Reports**: Get comprehensive fact-check reports with sources and reliability scores
+- **Multilingual Support**: Automatically detects input language and responds accordingly
 
 ## Tech Stack
 
@@ -37,36 +29,26 @@ An AI-powered fact-checking application that automatically transcribes, analyzes
 - Python with FastAPI
 - OpenAI API integration
 - MoviePy for video processing
-- Instagram API integration (optional)
+- Instagram content extraction
 
 ### Frontend
-- React-based web interface
+- React with user-friendly tabbed interface
 - Tailwind CSS for styling
-- Framer Motion for animations
 
 ### Infrastructure
-- File system storage for uploads
+- Docker and Docker Compose for containerization
 - Environment-based configuration
-- CORS support for secure API access
 
-## Screenshots
-
-![2](https://github.com/user-attachments/assets/b9df478c-ab60-44ef-9b99-9a73de056c68)
-![1](https://github.com/user-attachments/assets/1d76a336-938b-46e4-89ee-a02856efe8f9)
-
-
-## Installation
+## Getting Started
 
 ### Prerequisites
 - Python 3.9+
 - Node.js and npm
 - OpenAI API key
 - FFmpeg (for video processing)
-- Docker and Docker Compose (optional, for containerized setup)
+- Docker and Docker Compose (optional)
 
-### Setup
-
-#### Option 1: Traditional Setup
+### Quick Setup
 
 1. Clone the repository
    ```bash
@@ -74,165 +56,74 @@ An AI-powered fact-checking application that automatically transcribes, analyzes
    cd fact-check
    ```
 
-2. Copy `env.example` to `.env` and fill in your credentials
+2. Copy `env.example` to `.env` and add your API keys
    ```bash
    cp env.example .env
    ```
 
-3. Install backend dependencies
-   ```bash
-   pip install -r requirements.txt
-   ```
-   or with conda:
-   ```bash
-   conda env create -f environment.yml
-   ```
+3. Choose your setup method:
 
-4. Install frontend dependencies
-   ```bash
-   cd video-transcription-frontend
-   npm install
-   ```
-
-#### Option 2: Docker Setup
-
-1. Clone the repository
-   ```bash
-   git clone https://github.com/yourusername/fact-check.git
-   cd fact-check
-   ```
-
-2. Copy `env.example` to `.env` and fill in your credentials
-   ```bash
-   cp env.example .env
-   ```
-
-3. Build and start the Docker containers
+   **Docker Setup (Recommended)**
    ```bash
    docker-compose up -d
    ```
+   Access at http://localhost
 
-   This will:
-   - Build the backend container with Python and FastAPI
-   - Build the frontend container with Node.js and React
-   - Configure Nginx for serving the frontend and proxying API requests
-   - Set up volume mapping for uploads and environment variables
+   **Manual Setup**
+   ```bash
+   # Install backend dependencies
+   pip install -r requirements.txt
+   
+   # Start backend
+   cd video-upload-app
+   uvicorn app:app --reload
+   
+   # In another terminal, install and start frontend
+   cd video-transcription-frontend
+   npm install
+   npm start
+   ```
+   Access at http://localhost:3000
 
-4. Access the application at http://localhost
+## Configuration
 
-## Usage
-
-### Running with Docker
-
-```bash
-# Start the services
-docker-compose up -d
-
-# View logs
-docker-compose logs -f
-
-# Stop the services
-docker-compose down
-
-# Rebuild and start the services (after making changes)
-docker-compose up -d --build
-
-# Debug Docker issues
-./docker-debug.sh
-```
-
-## Troubleshooting
-
-### Docker Issues
-
-If you encounter issues with the Docker setup:
-
-1. Run the debugging script: `./docker-debug.sh`
-2. Check container logs: `docker-compose logs`
-3. Verify file permissions in containers
-4. Ensure your `.env` file is correctly set up
-5. If necessary, rebuild containers: `docker-compose up -d --build`
-
-- **Error: No such file or directory**: Ensure all paths in docker-compose.yml are correct and that you've created any required directories.
-- **Backend can't connect to OpenAI API**: Verify your API key in the .env file is correct and that you have sufficient credits.
-- **Frontend not connecting to backend**: Check the REACT_APP_API_URL in your environment variables and ensure the backend service is running.
-
-### Instagram Integration Issues
-
-The Instagram integration uses third-party libraries to download content from Instagram for fact-checking. Due to Instagram's measures against automated access, you may encounter the following issues:
-
-#### Common Errors
-
-1. **401 Unauthorized Error**: Instagram is actively blocking the connection.
-   - **Solution**: Try using different Instagram credentials in your .env file.
-   - **Alternative**: Download the video manually and upload it directly.
-
-2. **"Could not find window._sharedData" Error**: Instagram has changed their page structure.
-   - **Solution**: Wait for a library update or use the manual upload option.
-
-3. **No media found after download**: The content might be private or not accessible.
-   - **Solution**: Ensure you're using credentials that have access to the content.
-
-#### Mitigation Strategies
-
-- Increase `INSTAGRAM_MAX_RETRIES` and `INSTAGRAM_RETRY_DELAY` in your .env file
-- Use an Instagram account with fewer restrictions
-- If Instagram integration is critical, consider implementing a browser automation solution (like Selenium)
-
-#### Note on Instagram's Policies
-
-Instagram actively works to prevent automated access to their platform. The application's ability to download content may be affected by:
-- Instagram's frequent API and website changes
-- Rate limiting and blocking of automated requests
-- Login challenges and captchas when using automated tools
-
-### Running the Backend Server (without Docker)
-
-```bash
-cd video-upload-app
-uvicorn app:app --reload
-```
-
-### Running the Frontend Development Server (without Docker)
-
-```bash
-cd video-transcription-frontend
-npm start
-```
-
-### Building for Production
-
-```bash
-cd video-transcription-frontend
-npm run build
-```
-
-## Environment Variables
-
-Set the following environment variables in your `.env` file:
+Key environment variables:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `OPENAI_API_KEY` | Your OpenAI API key | required |
-| `GOOGLE_API_KEY` | Your Google API key (if applicable) | optional |
-| `INSTAGRAM_USERNAME` | Instagram username for downloading content | optional |
-| `INSTAGRAM_PASSWORD` | Instagram password for downloading content | optional |
-| `INSTAGRAM_MAX_RETRIES` | Maximum number of retry attempts for Instagram | 3 |
-| `INSTAGRAM_RETRY_DELAY` | Delay between retry attempts in seconds | 2 |
-| `ALLOWED_ORIGINS` | Comma-separated list of allowed origins for CORS | * |
 | `FACT_CHECK_MODEL` | OpenAI model for fact checking | chatgpt-4o-latest |
 | `IMAGE_ANALYSIS_MODEL` | OpenAI model for image analysis | gpt-4o-mini |
 | `TRANSCRIPTION_MODEL` | OpenAI model for transcription | whisper-1 |
-| `REACT_APP_MAX_UPLOAD_SIZE` | Maximum upload size in MB | 2500 |
-| `ALLOWED_FILE_TYPES` | Comma-separated list of allowed file extensions | mp4,mov,avi |
+| `USE_WEB_SEARCH` | Enable web search during fact checking | true |
+| `INSTAGRAM_USERNAME` | Instagram username for content extraction | optional |
+| `INSTAGRAM_PASSWORD` | Instagram password for content extraction | optional |
 
-## API Endpoints
+See `.env.example` for all configuration options.
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/upload` | POST | Upload a video for processing |
-| `/transcribe` | POST | Transcribe an already uploaded video |
-| `/fact-check` | POST | Perform fact-checking on a transcription |
+## Troubleshooting
+
+### Instagram Integration
+
+Instagram integration may encounter issues due to Instagram's measures against automated access:
+
+- **401 Unauthorized**: Try different credentials or manual upload
+- **No media found**: Content might be private or inaccessible
+- **Page structure errors**: Instagram may have changed their page structure
+
+### Docker Issues
+
+If you encounter Docker-related problems:
+```bash
+# Debug Docker setup
+./docker-debug.sh
+
+# Check logs
+docker-compose logs -f
+
+# Rebuild containers
+docker-compose up -d --build
+```
 
 ## Contributing
 
@@ -246,12 +137,7 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## Acknowledgments
-
-- OpenAI for providing the AI models
-- All contributors who have helped with the project
+This project is licensed under the MIT License.
 
 ## Contact
 
