@@ -27,6 +27,10 @@ import PrivacyPolicy from './components/PrivacyPolicy';
 import TermsOfService from './components/TermsOfService';
 import About from './components/About';
 
+// Import ad components
+import AdLayout from './components/AdLayout';
+import InContentAd from './components/InContentAd';
+
 const MAX_UPLOAD_SIZE = parseInt(process.env.REACT_APP_MAX_UPLOAD_SIZE || '250', 10);
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
 
@@ -999,8 +1003,8 @@ function App() {
   }, [result]);
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-4xl mx-auto">
+    <main className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 py-12">
+      <div className="container mx-auto max-w-screen-2xl">
         <header className="text-center mb-12">
           <Link to="/">
             <h1 className="text-4xl font-bold text-gray-800 tracking-tight hover:text-blue-600 transition-colors">
@@ -1016,7 +1020,7 @@ function App() {
 
         <Routes>
           <Route path="/" element={
-            <>
+            <AdLayout>
               <AnimatePresence mode="wait">
                 <motion.section
                   key="form"
@@ -1435,6 +1439,10 @@ function App() {
                                   }} />
                                 )}
                               </motion.section>
+                              
+                              {/* In-Content Advertisement */}
+                              <InContentAd />
+                              
                               {result.transcription && (
                                 <motion.section 
                                   whileHover={{ scale: 1.01 }} 
@@ -1475,6 +1483,9 @@ function App() {
                             </>
                           )}
                         </div>
+                        
+                        {/* Bottom Results Advertisement */}
+                        <InContentAd />
                       </>
                     )}
 
@@ -1491,12 +1502,12 @@ function App() {
                   </div>
                 </motion.article>
               )}
-            </>
+            </AdLayout>
           }/>
 
-          <Route path="/privacy" element={<PrivacyPolicy />} />
-          <Route path="/terms" element={<TermsOfService />} />
-          <Route path="/about" element={<About />} />
+          <Route path="/privacy" element={<AdLayout><PrivacyPolicy /></AdLayout>} />
+          <Route path="/terms" element={<AdLayout><TermsOfService /></AdLayout>} />
+          <Route path="/about" element={<AdLayout><About /></AdLayout>} />
         </Routes>
         
         <footer className="mt-12 text-center text-sm text-gray-500">
