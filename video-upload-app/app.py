@@ -28,6 +28,10 @@ logger = logging.getLogger(__name__)
 env_path = os.path.join(os.path.dirname(__file__), ".env")
 logger.info(f"Loading environment from: {env_path}")
 
+# Load .env file BEFORE reading env vars
+from dotenv import load_dotenv
+load_dotenv(dotenv_path=env_path)
+
 # Load the API key separately to guarantee we have the correct one
 api_key = None
 try:
@@ -48,9 +52,6 @@ try:
         logger.error("No OpenAI API key found in .env file!")
 except Exception as e:
     logger.error(f"Error reading API key from .env file: {str(e)}")
-
-# Now load the rest of the environment variables
-load_dotenv(dotenv_path=env_path)
 
 # ... (other imports and setup code)
 
@@ -101,6 +102,10 @@ client = OpenAI(api_key=api_key)
 if api_key:
     masked_key = api_key[:10] + "..." + api_key[-5:]
     logger.info(f"Using OpenAI API key: {masked_key}")
+    logger.info(f"Model: {FACT_CHECK_MODEL}")
+    logger.info(f"Web Search Model: {WEB_SEARCH_MODEL}")
+    logger.info(f"All env: {dict(os.environ)}")
+
 else:
     logger.error("No OpenAI API key found in environment variables or .env file!")
 
