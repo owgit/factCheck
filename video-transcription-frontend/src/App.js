@@ -36,23 +36,137 @@ const stageColors = ['from-blue-400 to-blue-500', 'from-purple-400 to-purple-500
 const extractFactCheckData = (htmlContent) => {
   if (!htmlContent) return null;
   
+  console.log('Raw HTML content:', htmlContent);
+  
   const parser = new DOMParser();
   const doc = parser.parseFromString(htmlContent, 'text/html');
   
-  const resultEl = doc.querySelector('.result');
-  const conclusionEl = doc.querySelector('.analysis p');
-  const findingsEls = doc.querySelectorAll('.findings li');
-  const sourcesEls = doc.querySelectorAll('.sources li');
+  // More robust selection of elements
+  const resultEl = doc.querySelector('.result') || doc.querySelector('h2');
+  const conclusionEl = doc.querySelector('.analysis p') || doc.querySelector('section p');
   
-  const findings = Array.from(findingsEls).map(el => {
-    const claimText = el.querySelector('.claim-text')?.textContent || '';
-    const accuracy = el.querySelector('.accuracy')?.textContent || '';
-    const explanation = el.querySelector('.explanation')?.textContent || '';
+  // Use multiple approaches to find findings
+  let findingsEls = doc.querySelectorAll('.findings li');
+  
+  // If no findings using class selector, try more general approach
+  if (!findingsEls || findingsEls.length === 0) {
+    console.log('No findings found with class selector, trying alternative approach');
+    // Find section that might contain findings
+    const findingsSection = doc.querySelector('section.findings') || 
+                           Array.from(doc.querySelectorAll('section')).find(el => 
+                             el.textContent.toLowerCase().includes('findings') || 
+                             el.textContent.toLowerCase().includes('claims')
+                           );
+    
+    if (findingsSection) {
+      console.log('Found potential findings section:', findingsSection.outerHTML);
+      findingsEls = findingsSection.querySelectorAll('li');
+    }
+  }
+  
+  console.log('Findings elements found:', findingsEls ? findingsEls.length : 0);
+  
+  const findings = Array.from(findingsEls || []).map(el => {
+    console.log('Processing finding element:', el.outerHTML);
+    
+    // Try multiple ways to extract claim text
+    let claimText = '';
+    let accuracy = '';
+    let explanation = '';
+    
+    // First try the class-based approach
+    const claimTextEl = el.querySelector('.claim-text');
+    const accuracyEl = el.querySelector('.accuracy');
+    const explanationEl = el.querySelector('.explanation');
+    
+    if (claimTextEl) {
+      claimText = claimTextEl.textContent.trim();
+    } else {
+      // Alternative approaches
+      // Look for the claim text which might be in a <strong> tag followed by text
+      const strongEl = el.querySelector('strong');
+      if (strongEl && strongEl.nextSibling) {
+        // The claim might be in the text node after the "Claim:" label
+        const textAfterStrong = strongEl.nextSibling.textContent.trim();
+        if (textAfterStrong) {
+          claimText = textAfterStrong;
+        }
+      }
+      
+      // If still no claim text, look for any span that might contain it
+      if (!claimText) {
+        const spans = el.querySelectorAll('span');
+        if (spans.length > 0) {
+          claimText = spans[0].textContent.trim();
+        }
+      }
+      
+      // Last resort: just use the first line of the element's text
+      if (!claimText) {
+        claimText = el.textContent.split('\n')[0].trim();
+      }
+    }
+    
+    if (accuracyEl) {
+      accuracy = accuracyEl.textContent.trim();
+    } else {
+      // Try to find accuracy in any span or text that contains accuracy-related terms
+      const allText = el.textContent.toLowerCase();
+      const accuracyTerms = ['accurate', 'inaccurate', 'partly', 'mostly', 'unable to verify'];
+      
+      for (const term of accuracyTerms) {
+        if (allText.includes(term)) {
+          // Extract a phrase around this term
+          const textParts = el.textContent.split(/[.,:;-]/);
+          for (const part of textParts) {
+            if (part.toLowerCase().includes(term)) {
+              accuracy = part.trim();
+              break;
+            }
+          }
+          if (accuracy) break;
+        }
+      }
+    }
+    
+    if (explanationEl) {
+      explanation = explanationEl.textContent.trim();
+    } else {
+      // Try to find an explanation in a paragraph
+      const paragraphs = el.querySelectorAll('p');
+      if (paragraphs.length > 0) {
+        // Use the first paragraph after the claim/accuracy as explanation
+        explanation = paragraphs[0].textContent.trim();
+      } else {
+        // Last resort: use remaining text after claim and accuracy as explanation
+        const fullText = el.textContent.trim();
+        const withoutClaim = fullText.replace(claimText, '').trim();
+        const withoutAccuracy = accuracy ? withoutClaim.replace(accuracy, '').trim() : withoutClaim;
+        explanation = withoutAccuracy;
+      }
+    }
+    
+    console.log('Extracted claim:', { claimText, accuracy, explanation });
     
     return { claimText, accuracy, explanation };
   });
   
-  const sources = Array.from(sourcesEls).map(el => {
+  // If we still have no findings, attempt to generate at least one from the overall content
+  if (findings.length === 0) {
+    console.log('No findings extracted, attempting to create a default finding');
+    const mainContent = conclusionEl ? conclusionEl.textContent : '';
+    if (mainContent) {
+      findings.push({
+        claimText: 'Overall content',
+        accuracy: resultEl ? resultEl.textContent : 'Unknown',
+        explanation: mainContent
+      });
+    }
+  }
+  
+  const sourcesEls = doc.querySelectorAll('.sources li');
+  
+  const sources = Array.from(sourcesEls || []).map(el => {
     const linkEl = el.querySelector('a');
     if (linkEl) {
       return {
@@ -69,17 +183,24 @@ const extractFactCheckData = (htmlContent) => {
     }
   });
   
-  return {
+  const result = {
     result: resultEl?.textContent || 'UNKNOWN',
     conclusion: conclusionEl?.textContent || '',
     findings,
     sources
   };
+  
+  console.log('Extracted fact check data:', result);
+  
+  return result;
 };
 
 // Component for displaying fact checking results
 const FactCheckResults = ({ htmlContent, onShare, onExport, webSearchResults }) => {
   const factData = extractFactCheckData(htmlContent);
+  
+  console.log('FactCheckResults received HTML:', htmlContent ? htmlContent.substring(0, 100) + '...' : null);
+  console.log('FactCheckResults parsed data:', factData);
   
   if (!factData) {
     return (
@@ -264,36 +385,44 @@ const FactCheckResults = ({ htmlContent, onShare, onExport, webSearchResults }) 
       <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
         <h3 className="text-xl font-semibold mb-4">Claims Analysis</h3>
         <div className="space-y-4">
-          {factData.findings.map((finding, index) => {
-            const isWebVerified = isClaimWebVerified(finding.claimText);
-            
-            return (
-              <div key={index} className={`p-4 border rounded-lg hover:bg-gray-50 transition-colors ${getBinaryTruthColor(finding.accuracy)}`}>
-                <div className="flex items-start">
-                  <div className="flex-shrink-0 mt-1">
-                    {getBinaryTruthIcon(finding.accuracy)}
-                  </div>
-                  <div className="ml-3 w-full">
-                    <div className="flex justify-between">
-                      <div className="flex items-center">
-                        <p className="font-medium text-gray-900">{finding.claimText}</p>
-                        {isWebVerified && (
-                          <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
-                            <GlobeAltIcon className="h-3 w-3 mr-1" />
-                            Web Verified
-                          </span>
-                        )}
-                      </div>
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getAccuracyClass(finding.accuracy)}`}>
-                        {finding.accuracy}
-                      </span>
+          {console.log('Rendering findings:', factData.findings)}
+          {factData.findings && factData.findings.length > 0 ? (
+            factData.findings.map((finding, index) => {
+              const isWebVerified = isClaimWebVerified(finding.claimText);
+              console.log('Rendering finding:', finding);
+              
+              return (
+                <div key={index} className={`p-4 border rounded-lg hover:bg-gray-50 transition-colors ${getBinaryTruthColor(finding.accuracy)}`}>
+                  <div className="flex items-start">
+                    <div className="flex-shrink-0 mt-1">
+                      {getBinaryTruthIcon(finding.accuracy)}
                     </div>
-                    <p className="mt-1 text-sm text-gray-600">{finding.explanation}</p>
+                    <div className="ml-3 w-full">
+                      <div className="flex justify-between">
+                        <div className="flex items-center">
+                          <p className="font-medium text-gray-900">{finding.claimText}</p>
+                          {isWebVerified && (
+                            <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                              <GlobeAltIcon className="h-3 w-3 mr-1" />
+                              Web Verified
+                            </span>
+                          )}
+                        </div>
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getAccuracyClass(finding.accuracy)}`}>
+                          {finding.accuracy}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-sm text-gray-600">{finding.explanation}</p>
+                    </div>
                   </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })
+          ) : (
+            <div className="p-4 border rounded-lg bg-gray-50">
+              <p className="text-gray-700 text-center">No claims analysis available</p>
+            </div>
+          )}
         </div>
       </div>
       
@@ -510,10 +639,35 @@ function App() {
   const [transcriptionOpen, setTranscriptionOpen] = useState(false);
   const [modelInfo, setModelInfo] = useState(null);
   const [detectedLanguage, setDetectedLanguage] = useState(null);
+  const [preferredLanguage, setPreferredLanguage] = useState(localStorage.getItem('PREFERRED_LANGUAGE') || 'auto'); // Add preferred language state
   const [useWebSearch, setUseWebSearch] = useState(true); // Default to true until server setting is checked
   const [webSearchDisabled, setWebSearchDisabled] = useState(false); // Whether checkbox should be disabled
   const [taskId, setTaskId] = useState(null); // Track task ID for background processing
   const [pollingInterval, setPollingInterval] = useState(null); // Interval for polling task status
+
+  // Common language options
+  const languageOptions = [
+    { code: 'auto', name: 'Auto-detect' },
+    { code: 'en', name: 'English' },
+    { code: 'es', name: 'Spanish' },
+    { code: 'fr', name: 'French' },
+    { code: 'de', name: 'German' },
+    { code: 'it', name: 'Italian' },
+    { code: 'pt', name: 'Portuguese' },
+    { code: 'nl', name: 'Dutch' },
+    { code: 'ru', name: 'Russian' },
+    { code: 'zh', name: 'Chinese' },
+    { code: 'ja', name: 'Japanese' },
+    { code: 'ko', name: 'Korean' },
+    { code: 'ar', name: 'Arabic' },
+    { code: 'hi', name: 'Hindi' },
+    { code: 'tr', name: 'Turkish' },
+  ];
+
+  // Save preferred language to localStorage when it changes
+  useEffect(() => {
+    localStorage.setItem('PREFERRED_LANGUAGE', preferredLanguage);
+  }, [preferredLanguage]);
 
   // Effect to initialize and get models from the backend
   useEffect(() => {
@@ -655,6 +809,7 @@ function App() {
         const formData = new FormData();
         formData.append('text', freeText);
         formData.append('use_web_search', useWebSearch ? 'true' : 'false');
+        formData.append('preferred_language', preferredLanguage); // Add preferred language to the request
         
         response = await axios.post(`${API_BASE_URL}/fact-check-text`, formData, {
           headers: { 'Content-Type': 'multipart/form-data' },
@@ -680,6 +835,7 @@ function App() {
         const formData = new FormData();
         file ? formData.append('file', file) : formData.append('url', instagramLink);
         formData.append('use_web_search', useWebSearch ? 'true' : 'false');
+        formData.append('preferred_language', preferredLanguage); // Add preferred language to the request
         
         response = await axios.post(`${API_BASE_URL}/upload`, formData, {
           headers: { 'Content-Type': 'multipart/form-data' },
@@ -726,7 +882,7 @@ function App() {
       setError(error.response?.data?.detail || 'An error occurred');
       setLoading(false);
     }
-  }, [file, instagramLink, freeText, inputMode, useWebSearch, pollTaskStatus]);
+  }, [file, instagramLink, freeText, inputMode, useWebSearch, pollTaskStatus, preferredLanguage]);
 
   const getFactCheckStatus = useCallback((factCheck) => {
     if (!factCheck) return { status: 'UNKNOWN', color: 'text-yellow-400' };
@@ -921,6 +1077,36 @@ function App() {
                         </button>
                       </div>
 
+                      {/* Language Selection */}
+                      <div className="mt-4 bg-gray-50 rounded-lg p-3 border border-gray-200 mb-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center">
+                            <GlobeAltIcon className="h-5 w-5 text-gray-500 mr-2" />
+                            <span className="text-sm font-medium text-gray-700">
+                              Response Language
+                            </span>
+                          </div>
+                          <div className="w-40">
+                            <select
+                              id="language-select"
+                              value={preferredLanguage}
+                              onChange={(e) => setPreferredLanguage(e.target.value)}
+                              className="block w-full px-3 py-1 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                            >
+                              {languageOptions.map(option => (
+                                <option key={option.code} value={option.code}>
+                                  {option.name}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                        <p className="mt-1 text-xs text-gray-500">
+                          Select "Auto-detect" to automatically detect the language, or choose a specific language for AI responses.
+                        </p>
+                      </div>
+
+                      {/* Web Search Toggle */}
                       <div className="mt-4 bg-gray-50 rounded-lg p-3 border border-gray-200">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center">

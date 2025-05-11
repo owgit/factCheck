@@ -126,9 +126,13 @@ def cleanup_old_files():
                 os.remove(file_path)
                 logging.debug(f"Removed old file: {file_path}")
 
-def perform_fact_check(text, detected_language=None, should_use_web_search=True, context='video'):
+def perform_fact_check(text, detected_language=None, should_use_web_search=True, context='video', preferred_language=None):
     language_instruction = ""
-    if detected_language:
+    if preferred_language and preferred_language != 'auto':
+        # If user specified a language, use that
+        language_instruction = f"Your entire response MUST be in {preferred_language} language, regardless of the input language."
+    elif detected_language:
+        # Otherwise use the detected language if available
         language_instruction = f"The detected language is {detected_language}. Your entire response MUST be in {detected_language}."
     
     prompt = f"""
@@ -166,6 +170,10 @@ def perform_fact_check(text, detected_language=None, should_use_web_search=True,
     {text}
     </text_to_check>
 
+    IMPORTANT! Your response MUST include a findings section with at least one claim analysis.
+    The HTML MUST include these exact sections: <h2 class="result">, <section class="analysis">, <section class="sources">, and <section class="findings">.
+    The findings section MUST have at least one list item with <span class="claim-text">, <span class="accuracy">, and <p class="explanation"> elements.
+
     Respond with HTML in this format and in the same language as the input text:
     <div class="fact-check">
         <h2 class="result">[INCONCLUSIVE, MOSTLY ACCURATE, MOSTLY INACCURATE, or MIXED]</h2>
@@ -190,6 +198,7 @@ def perform_fact_check(text, detected_language=None, should_use_web_search=True,
                     <span class="accuracy">[Accurate, Mostly Accurate, Partly Accurate, Mostly Inaccurate, Inaccurate, or Unable to verify]</span>
                     <p class="explanation">[Detailed explanation with specific references to sources]</p>
                 </li>
+                <!-- Additional claims as needed -->
             </ul>
         </section>
     </div>
@@ -212,6 +221,14 @@ def perform_fact_check(text, detected_language=None, should_use_web_search=True,
             )
             fact_check_result = response.choices[0].message.content.strip()
             
+            # Log the generated HTML to check for issues
+            logger.info(f"Generated fact check HTML structure: {fact_check_result[:500]}...")
+            
+            # Check specifically for the findings section
+            has_findings_section = '<section class="findings">' in fact_check_result
+            has_findings_items = '<span class="claim-text">' in fact_check_result
+            logger.info(f"Has findings section: {has_findings_section}, Has claim-text spans: {has_findings_items}")
+            
             # Basic validation of the result
             if not fact_check_result or "<div class=\"fact-check\">" not in fact_check_result:
                 logger.warning(f"Invalid fact check result format on attempt {attempt+1}. Retrying...")
@@ -226,6 +243,13 @@ def perform_fact_check(text, detected_language=None, should_use_web_search=True,
             
             if missing_sections:
                 logger.warning(f"Fact check result missing sections: {missing_sections} on attempt {attempt+1}. Retrying...")
+                if attempt < max_retries - 1:
+                    time.sleep(retry_delay)
+                    continue
+                    
+            # Additional check for findings content
+            if "<section class=\"findings\">" in fact_check_result and "<span class=\"claim-text\">" not in fact_check_result:
+                logger.warning("Findings section exists but doesn't contain any claims. Retrying...")
                 if attempt < max_retries - 1:
                     time.sleep(retry_delay)
                     continue
@@ -395,7 +419,7 @@ def perform_web_search(search_query):
             "timestamp": datetime.now().isoformat()
         }
 
-def analyze_image(image_path, should_use_web_search=True):
+def analyze_image(image_path, should_use_web_search=True, preferred_language=None):
     try:
         with open(image_path, "rb") as image_file:
             base64_image = base64.b64encode(image_file.read()).decode('utf-8')
@@ -403,69 +427,68 @@ def analyze_image(image_path, should_use_web_search=True):
         # Try to detect language from image text using OCR first (if available)
         detected_language = None
         try:
-            # OCR could be added here in the future if needed
+            # OCR implementation would go here if available
             # For now, we'll rely on the AI to detect language
             pass
         except Exception as e:
             logger.warning(f"Could not detect language from image: {str(e)}")
             
+        # Set language instruction based on preferred language
+        language_instruction = ""
+        if preferred_language and preferred_language != 'auto':
+            language_instruction = f"Your response MUST be in {preferred_language} language regardless of any text visible in the image."
+        
         prompt = f"""
-        Analyze the given image with a focus on fact-checking and identifying potential misinformation. Follow these steps:
+        Analyze this image and identify any factual claims that can be verified. If text is present, perform a fact-check on that text.
+
         1. First, identify the language of any text visible in the image. Your entire response should be in this language.
-           If no text is visible, respond in the language of the accompanying query or default to English.
-        2. Describe the main elements and context of the image briefly.
-        3. Identify the main claims (textual or visual) - maximum 5 most significant claims.
-        4. For each claim:
-           a. Search for reliable sources to verify the claim.
-           b. If no reliable sources are found, state "Unable to verify" for that claim.
-           c. If reliable sources are found, assess the claim's accuracy using specific criteria.
-           d. Provide a brief explanation for your assessment with direct references to sources.
-        5. For each claim, rate accuracy on this scale: 
-           - Accurate (claim fully supported by reliable sources)
-           - Mostly Accurate (claim mostly supported but with minor inaccuracies)
-           - Partly Accurate (claim contains a mix of accurate and inaccurate elements)
-           - Mostly Inaccurate (claim contains more inaccuracies than accuracies)
-           - Inaccurate (claim contradicted by reliable sources)
-           - Unable to verify (insufficient reliable information available)
-        6. If you're unsure about any aspect, clearly state "I don't know" for that part.
-        7. Determine if image appears to be AI-generated or manipulated in any way.
+        If no text is visible, respond in the language of the accompanying query or default to English.
+        {language_instruction}
+        2. Carefully describe what you see in the image, focusing on elements relevant to factual verification.
+        3. If text is present in the image:
+           a. Extract the main text content
+           b. Identify specific factual claims in the text
+           c. Verify these claims using your knowledge base
+           d. Assess the accuracy of each claim with explanation
+        4. If there is no text but there are visual claims (charts, graphs, visual representations of statistics, etc.):
+           a. Extract the key data points/claims shown visually
+           b. Verify these claims if possible
+           c. Assess their accuracy with explanation
+        5. Look for any signs that the image has been manipulated, edited, or is AI-generated
+        6. Provide an overall assessment of the factual accuracy of the content
+        7. If you cannot verify any claims, clearly state this limitation
         8. At the end of your analysis, add a special tag indicating the detected language in this format: <detected_language>LANGUAGE_CODE</detected_language>
 
         IMPORTANT: Your entire response MUST be in the same language as any text visible in the image. This is critical - I need to emphasize that your analysis MUST be written in the EXACT SAME LANGUAGE as the text in the image, even if that language is not English.
 
         IMPORTANT SOURCE GUIDELINES:
         - Only use authoritative, established sources (government agencies, major news outlets, academic journals, established fact-checking organizations).
-        - Verify that URLs are stable, permanent links (not search results, temporary pages, or pages requiring login).
-        - For news sources, prefer stable archive links or permalink URLs.
-        - If you cannot find a reliably stable URL for a source, describe the source without including a URL.
-        - Include at least the source name, publication date, and title when referring to sources.
-        - Never fabricate sources - if you cannot find relevant reliable sources, state "Unable to verify".
+        - When making a factual assessment, explain why you arrived at that conclusion.
+        - If you cannot verify a claim with your knowledge, state "Unable to verify" for that claim.
+        - Never fabricate sources or information - if information cannot be verified, admit this limitation.
 
         Respond with HTML in this format and in the same language as any text in the image:
         <div class="fact-check">
-            <h2 class="result">[INCONCLUSIVE, MOSTLY ACCURATE, MOSTLY INACCURATE, MIXED, or AI-GENERATED]</h2>
+            <h2 class="result">[ACCURATE, INACCURATE, MANIPULATED, SATIRICAL, UNVERIFIABLE, or MIXED]</h2>
+            <section class="visual-analysis">
+                <h3>Image Content:</h3>
+                <p>[Detailed description of the image, focusing on factual elements]</p>
+            </section>
+            <section class="text-content">
+                <h3>Text in Image:</h3>
+                <p>[Main text content present in the image, if any]</p>
+            </section>
             <section class="analysis">
+                <h3>Fact Check:</h3>
+                <p>[Analysis of factual claims and their accuracy]</p>
+            </section>
+            <section class="manipulation">
+                <h3>Manipulation Assessment:</h3>
+                <p>[Indications of whether the image appears manipulated, edited, or AI-generated]</p>
+            </section>
+            <section class="conclusion">
                 <h3>Conclusion:</h3>
-                <p>[Detailed summary of overall accuracy, including any uncertainties or limitations in the fact-checking process]</p>
-            </section>
-            <section class="sources">
-                <h3>Sources:</h3>
-                <ul>
-                    <li><a href="[STABLE_URL]">[Source name - Publication date - Title]</a></li>
-                    <li><a href="[STABLE_URL]">[Source name - Publication date - Title]</a></li>
-                    <li>[Source description without URL]</li>
-                </ul>
-            </section>
-            <section class="findings">
-                <h3>Findings:</h3>
-                <ul>
-                    <li>
-                        <strong>Claim 1:</strong>
-                        <span class="claim-text">[Claim text]</span> -
-                        <span class="accuracy">[Accurate, Mostly Accurate, Partly Accurate, Mostly Inaccurate, Inaccurate, or Unable to verify]</span>
-                        <p class="explanation">[Detailed explanation with specific references to sources]</p>
-                    </li>
-                </ul>
+                <p>[Overall assessment of the image's factual reliability]</p>
             </section>
             <detected_language>LANGUAGE_CODE</detected_language>
         </div>
@@ -663,7 +686,7 @@ def analyze_image(image_path, should_use_web_search=True):
         "web_search_results": None
     }
 
-async def process_video(video_path, should_use_web_search=True, task_id=None):
+async def process_video(video_path, should_use_web_search=True, task_id=None, preferred_language='auto'):
     try:
         audio_path = os.path.join(UPLOAD_DIRECTORY, "extracted_audio.wav")
         video = VideoFileClip(video_path)
@@ -684,8 +707,14 @@ async def process_video(video_path, should_use_web_search=True, task_id=None):
         # Use text from transcription
         transcription_text = transcription.text
 
-        # Pass flag and context ('video') to fact check
-        fact_check_html = perform_fact_check(transcription_text, detected_language, should_use_web_search, context='video')
+        # Perform fact-checking on the transcription
+        fact_check_html = perform_fact_check(
+            transcription_text, 
+            detected_language, 
+            should_use_web_search, 
+            context='video',
+            preferred_language=preferred_language
+        )
         
         # Perform web search if enabled
         web_search_results = None
@@ -1319,12 +1348,13 @@ async def upload_file(
     file: UploadFile = File(None), 
     url: str = Form(None), 
     use_web_search: str = Form('true'),
+    preferred_language: str = Form('auto'),
     background_tasks: BackgroundTasks = None
 ):
     try:
         # Convert string 'true'/'false' to boolean
         should_use_web_search = use_web_search.lower() == 'true'
-        logger.info(f"Upload request - Use web search: {should_use_web_search}")
+        logger.info(f"Upload request - Use web search: {should_use_web_search}, Preferred language: {preferred_language}")
         
         if not file and not url:
             raise HTTPException(status_code=400, detail="Either file or URL is required")
@@ -1374,8 +1404,8 @@ async def upload_file(
             logger.info(f"Processing video: {media_path}")
             # Generate a task ID for tracking
             task_id = str(uuid.uuid4())
-            # Pass should_use_web_search and task_id to process_video
-            background_tasks.add_task(process_video, media_path, should_use_web_search, task_id)
+            # Pass should_use_web_search, task_id, and preferred_language to process_video
+            background_tasks.add_task(process_video, media_path, should_use_web_search, task_id, preferred_language)
             # Immediate response for background task with task_id
             return JSONResponse(content={
                 "message": "Video processing started. Results will be available shortly.", 
@@ -1385,8 +1415,8 @@ async def upload_file(
         
         elif media_path.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
             logger.info(f"Processing image: {media_path}")
-            # Pass should_use_web_search to analyze_image
-            image_analysis_results = analyze_image(media_path, should_use_web_search)
+            # Process as image
+            image_analysis_results = analyze_image(media_path, should_use_web_search, preferred_language)
             
             # Extract the components from the analysis results
             analysis_result = image_analysis_results.get("analysis_result", "")
@@ -1458,11 +1488,13 @@ async def get_models():
         raise HTTPException(status_code=500, detail="Error retrieving model information")
 
 @app.post("/fact-check-text")
-async def fact_check_text(text: str = Form(...), use_web_search: str = Form('true')):
+async def fact_check_text(text: str = Form(...), 
+                         use_web_search: str = Form('true'), 
+                         preferred_language: str = Form('auto')):
     try:
         # Convert string 'true'/'false' to boolean
         should_use_web_search = use_web_search.lower() == 'true'
-        logger.info(f"Fact-check text request - Use web search: {should_use_web_search}")
+        logger.info(f"Fact-check text request - Use web search: {should_use_web_search}, Preferred language: {preferred_language}")
         
         # Try to detect language using langdetect
         detected_language = None
@@ -1473,7 +1505,13 @@ async def fact_check_text(text: str = Form(...), use_web_search: str = Form('tru
             logger.warning(f"Could not detect language: {str(e)}")
             
         # Perform fact-checking on the text, pass flag and context ('text')
-        fact_check_html = perform_fact_check(text, detected_language, should_use_web_search, context='text')
+        fact_check_html = perform_fact_check(
+            text, 
+            detected_language, 
+            should_use_web_search, 
+            context='text',
+            preferred_language=preferred_language
+        )
         
         # Perform web search if enabled for this request
         web_search_results = None
