@@ -345,17 +345,17 @@ def perform_web_search(search_query):
         3. Sources (numbered list with links)
         """
         
-        # Use OpenAI's web search capabilities with the appropriate format for the model
+                # Use OpenAI's web search capabilities with the appropriate format for the model
         if WEB_SEARCH_MODEL == "gpt-4o-search-preview" or "search" in WEB_SEARCH_MODEL:
             # Format for models with built-in web search capability
             try:
-            response = client.chat.completions.create(
-                model=WEB_SEARCH_MODEL,
-                messages=[
-                    {"role": "system", "content": "You are a skilled fact-checker and web researcher. Your role is to provide accurate, well-sourced answers to factual questions based on current web information. Always cite your sources with links and provide specific facts rather than general statements."},
-                    {"role": "user", "content": structured_prompt}
-                ]
-            )
+                response = client.chat.completions.create(
+                    model=WEB_SEARCH_MODEL,
+                    messages=[
+                        {"role": "system", "content": "You are a skilled fact-checker and web researcher. Your role is to provide accurate, well-sourced answers to factual questions based on current web information. Always cite your sources with links and provide specific facts rather than general statements."},
+                        {"role": "user", "content": structured_prompt}
+                    ]
+                )
                 logger.info(f"Web search completed successfully with model {WEB_SEARCH_MODEL}")
             except Exception as e:
                 # Fallback to using standard model if search model fails
