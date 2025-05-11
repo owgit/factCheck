@@ -876,10 +876,8 @@ function App() {
                       <div className="flex border-b border-gray-200" role="tablist" aria-label="Content type selection">
                         <button
                           onClick={() => setInputMode('file')}
-                          className={`flex-1 py-3 text-center border-b-2 font-medium text-sm ${
-                            inputMode === 'file'
-                              ? 'border-blue-500 text-blue-600'
-                              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                          className={`flex-1 py-3 text-center font-medium text-sm mode-tab ${
+                            inputMode === 'file' ? 'active' : ''
                           }`}
                           role="tab"
                           aria-selected={inputMode === 'file'}
@@ -891,10 +889,8 @@ function App() {
                         </button>
                         <button
                           onClick={() => setInputMode('instagram')}
-                          className={`flex-1 py-3 text-center border-b-2 font-medium text-sm ${
-                            inputMode === 'instagram'
-                              ? 'border-blue-500 text-blue-600'
-                              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                          className={`flex-1 py-3 text-center font-medium text-sm mode-tab ${
+                            inputMode === 'instagram' ? 'active' : ''
                           }`}
                           role="tab"
                           aria-selected={inputMode === 'instagram'}
@@ -912,10 +908,8 @@ function App() {
                         </button>
                         <button
                           onClick={() => setInputMode('text')}
-                          className={`flex-1 py-3 text-center border-b-2 font-medium text-sm ${
-                            inputMode === 'text'
-                              ? 'border-blue-500 text-blue-600'
-                              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                          className={`flex-1 py-3 text-center font-medium text-sm mode-tab ${
+                            inputMode === 'text' ? 'active' : ''
                           }`}
                           role="tab"
                           aria-selected={inputMode === 'text'}
@@ -966,45 +960,53 @@ function App() {
                           hidden={inputMode !== 'file'}
                         >
                           {inputMode === 'file' && (
-                            <div 
-                              className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${isDragging ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'}`}
-                              onDragOver={(e) => handleDrag(e, true)}
-                              onDragEnter={(e) => handleDrag(e, true)}
-                              onDragLeave={(e) => handleDrag(e, false)}
-                              onDrop={handleDrop}
-                            >
-                              <input
-                                type="file"
-                                id="file-upload"
-                                className="sr-only"
-                                onChange={(e) => handleFile(e.target.files[0])}
-                                accept=".mp4,.mov,.avi,.jpg,.jpeg,.png,.gif"
-                                aria-describedby="file-upload-description"
-                              />
+                            <div id="file-upload-panel" role="tabpanel" aria-labelledby="file-upload-tab" className="input-panel">
+                              <div className="mode-header">
+                                <div className="mode-title">
+                                  <CloudArrowUpIcon className="w-5 h-5" aria-hidden="true" />
+                                  <span>Upload Media File</span>
+                                </div>
+                                <span className="mode-badge">Active Mode</span>
+                              </div>
                               <label
-                                htmlFor="file-upload"
-                                className="cursor-pointer flex flex-col items-center justify-center"
+                                onDragEnter={e => handleDrag(e, true)}
+                                onDragOver={e => handleDrag(e, true)}
+                                onDragLeave={e => handleDrag(e, false)}
+                                onDrop={handleDrop}
+                                className={`mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-md cursor-pointer hover:border-blue-400 transition-colors ${
+                                  isDragging ? 'border-blue-500 bg-blue-50' : ''
+                                }`}
                               >
-                                <CloudArrowUpIcon className="w-10 h-10 text-gray-400 mb-2" aria-hidden="true" />
-                                <span className="text-sm font-medium text-gray-900">
-                                  {file ? file.name : 'Click to upload or drag and drop'}
-                                </span>
-                                <p className="text-xs text-gray-500 mt-1" id="file-upload-description">
-                                  MP4, MOV, AVI, JPG, JPEG, PNG up to {MAX_UPLOAD_SIZE}MB
-                                </p>
-                                {file && (
-                                  <button
-                                    type="button"
-                                    className="mt-2 text-xs text-red-600 hover:text-red-800"
-                                    onClick={(e) => {
-                                      e.preventDefault();
-                                      setFile(null);
-                                    }}
-                                    aria-label="Remove file"
-                                  >
-                                    Remove file
-                                  </button>
-                                )}
+                                <input
+                                  type="file"
+                                  id="file-upload"
+                                  className="sr-only"
+                                  onChange={(e) => handleFile(e.target.files[0])}
+                                  accept=".mp4,.mov,.avi,.jpg,.jpeg,.png,.gif"
+                                  aria-describedby="file-upload-description"
+                                />
+                                <div className="flex flex-col items-center justify-center">
+                                  <CloudArrowUpIcon className="w-10 h-10 text-gray-400 mb-2" aria-hidden="true" />
+                                  <span className="text-sm font-medium text-gray-900">
+                                    {file ? file.name : 'Click to upload or drag and drop'}
+                                  </span>
+                                  <p className="text-xs text-gray-500 mt-1" id="file-upload-description">
+                                    MP4, MOV, AVI, JPG, JPEG, PNG up to {MAX_UPLOAD_SIZE}MB
+                                  </p>
+                                  {file && (
+                                    <button
+                                      type="button"
+                                      className="mt-2 text-xs text-red-600 hover:text-red-800"
+                                      onClick={(e) => {
+                                        e.preventDefault();
+                                        setFile(null);
+                                      }}
+                                      aria-label="Remove file"
+                                    >
+                                      Remove file
+                                    </button>
+                                  )}
+                                </div>
                               </label>
                             </div>
                           )}
@@ -1017,35 +1019,35 @@ function App() {
                           hidden={inputMode !== 'instagram'}
                         >
                           {inputMode === 'instagram' && (
-                            <div>
-                              <label htmlFor="instagram-url" className="block text-sm font-medium text-gray-700 mb-2">
-                                Instagram Post URL
-                              </label>
-                              <div className="mt-1 flex rounded-md shadow-sm">
-                                <div className="relative flex items-stretch flex-grow">
-                                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                    <span className="text-gray-500 sm:text-sm" aria-hidden="true">
-                                      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-5 h-5">
-                                        <path d="M12 2C14.717 2 15.056 2.01 16.122 2.06C17.187 2.11 17.912 2.277 18.55 2.525C19.21 2.779 19.766 3.123 20.322 3.678C20.8305 4.1779 21.224 4.78259 21.475 5.45C21.722 6.087 21.89 6.813 21.94 7.878C21.987 8.944 22 9.283 22 12C22 14.717 21.99 15.056 21.94 16.122C21.89 17.187 21.722 17.912 21.475 18.55C21.2247 19.2178 20.8311 19.8226 20.322 20.322C19.822 20.8303 19.2173 21.2238 18.55 21.475C17.913 21.722 17.187 21.89 16.122 21.94C15.056 21.987 14.717 22 12 22C9.283 22 8.944 21.99 7.878 21.94C6.813 21.89 6.088 21.722 5.45 21.475C4.78233 21.2245 4.17753 20.8309 3.678 20.322C3.16941 19.8222 2.77593 19.2175 2.525 18.55C2.277 17.913 2.11 17.187 2.06 16.122C2.013 15.056 2 14.717 2 12C2 9.283 2.01 8.944 2.06 7.878C2.11 6.812 2.277 6.088 2.525 5.45C2.77524 4.78218 3.1688 4.17732 3.678 3.678C4.17767 3.16923 4.78243 2.77573 5.45 2.525C6.088 2.277 6.812 2.11 7.878 2.06C8.944 2.013 9.283 2 12 2Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                                        <path d="M17.5 6.5L17.51 6.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                                        <path d="M12 16C14.2091 16 16 14.2091 16 12C16 9.79086 14.2091 8 12 8C9.79086 8 8 9.79086 8 12C8 14.2091 9.79086 16 12 16Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                                      </svg>
-                                    </span>
-                                  </div>
-                                  <input
-                                    type="text"
-                                    id="instagram-url"
-                                    value={instagramLink}
-                                    onChange={e => setInstagramLink(e.target.value)}
-                                    placeholder="https://www.instagram.com/p/..."
-                                    className="focus:ring-blue-500 focus:border-blue-500 block w-full rounded-md pl-10 sm:text-sm border-gray-300"
-                                    aria-describedby="instagram-url-description"
-                                  />
+                            <div id="instagram-panel" role="tabpanel" aria-labelledby="instagram-tab" className="input-panel">
+                              <div className="mode-header">
+                                <div className="mode-title">
+                                  <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-5 h-5">
+                                    <path d="M12 2C14.717 2 15.056 2.01 16.122 2.06C17.187 2.11 17.912 2.277 18.55 2.525C19.21 2.779 19.766 3.123 20.322 3.678C20.8305 4.1779 21.224 4.78259 21.475 5.45C21.722 6.087 21.89 6.813 21.94 7.878C21.987 8.944 22 9.283 22 12C22 14.717 21.99 15.056 21.94 16.122C21.89 17.187 21.722 17.912 21.475 18.55C21.2247 19.2178 20.8311 19.8226 20.322 20.322C19.822 20.8303 19.2173 21.2238 18.55 21.475C17.913 21.722 17.187 21.89 16.122 21.94C15.056 21.987 14.717 22 12 22C9.283 22 8.944 21.99 7.878 21.94C6.813 21.89 6.088 21.722 5.45 21.475C4.78233 21.2245 4.17753 20.8309 3.678 20.322C3.16941 19.8222 2.77593 19.2175 2.525 18.55C2.277 17.913 2.11 17.187 2.06 16.122C2.013 15.056 2 14.717 2 12C2 9.283 2.01 8.944 2.06 7.878C2.11 6.812 2.277 6.088 2.525 5.45C2.77524 4.78218 3.1688 4.17732 3.678 3.678C4.17767 3.16923 4.78243 2.77573 5.45 2.525C6.088 2.277 6.812 2.11 7.878 2.06C8.944 2.013 9.283 2 12 2Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                    <path d="M17.5 6.5L17.51 6.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                    <path d="M12 16C14.2091 16 16 14.2091 16 12C16 9.79086 14.2091 8 12 8C9.79086 8 8 9.79086 8 12C8 14.2091 9.79086 16 12 16Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                  </svg>
+                                  <span>Instagram Content</span>
                                 </div>
+                                <span className="mode-badge">Active Mode</span>
                               </div>
-                              <p className="mt-2 text-sm text-gray-500" id="instagram-url-description">
-                                Paste a direct link to an Instagram post or reel
-                              </p>
+                              <div className="mt-1">
+                                <label htmlFor="instagram-link" className="block text-sm font-medium text-gray-700 mb-1">
+                                  Instagram Post or Reels URL
+                                </label>
+                                <input
+                                  type="text"
+                                  name="instagram-link"
+                                  id="instagram-link"
+                                  value={instagramLink}
+                                  onChange={(e) => setInstagramLink(e.target.value)}
+                                  className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                                  placeholder="https://www.instagram.com/p/..."
+                                />
+                                <p className="mt-2 text-sm text-gray-500">
+                                  Paste a direct link to an Instagram post or reel to fact-check the content.
+                                </p>
+                              </div>
                             </div>
                           )}
                         </div>
@@ -1057,22 +1059,31 @@ function App() {
                           hidden={inputMode !== 'text'}
                         >
                           {inputMode === 'text' && (
-                            <div>
-                              <label htmlFor="free-text" className="block text-sm font-medium text-gray-700 mb-2">
-                                Enter Text to Fact-Check
-                              </label>
-                              <textarea
-                                id="free-text"
-                                value={freeText}
-                                onChange={e => setFreeText(e.target.value)}
-                                rows={8}
-                                className="shadow-sm focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border-gray-300 rounded-md"
-                                placeholder="Enter any text, claim, or statement you want to fact-check..."
-                                aria-describedby="free-text-description"
-                              ></textarea>
-                              <p className="mt-2 text-sm text-gray-500" id="free-text-description">
-                                Enter claims, news snippets, or any text you want to verify
-                              </p>
+                            <div id="text-panel" role="tabpanel" aria-labelledby="text-tab" className="input-panel">
+                              <div className="mode-header">
+                                <div className="mode-title">
+                                  <DocumentTextIcon className="w-5 h-5" aria-hidden="true" />
+                                  <span>Text Fact-Checking</span>
+                                </div>
+                                <span className="mode-badge">Active Mode</span>
+                              </div>
+                              <div className="mt-1">
+                                <label htmlFor="free-text" className="block text-sm font-medium text-gray-700 mb-1">
+                                  Text to Fact-Check
+                                </label>
+                                <textarea
+                                  id="free-text"
+                                  name="free-text"
+                                  rows={5}
+                                  value={freeText}
+                                  onChange={(e) => setFreeText(e.target.value)}
+                                  className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                                  placeholder="Enter claims or statements to fact-check..."
+                                />
+                                <p className="mt-2 text-sm text-gray-500">
+                                  Enter any text, claims, or statements you'd like to fact-check.
+                                </p>
+                              </div>
                             </div>
                           )}
                         </div>

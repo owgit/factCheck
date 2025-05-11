@@ -346,37 +346,36 @@ def perform_web_search(search_query):
         """
         
         # Use OpenAI's web search capabilities with the appropriate format for the model
-        if WEB_SEARCH_MODEL == "gpt-4o-search-preview":
-            # Format for gpt-4o-search-preview which has built-in web search
-            response = client.chat.completions.create(
-                model=WEB_SEARCH_MODEL,
-                messages=[
-                    {"role": "system", "content": "You are a skilled fact-checker and web researcher. Your role is to provide accurate, well-sourced answers to factual questions based on current web information. Always cite your sources with links and provide specific facts rather than general statements."},
-                    {"role": "user", "content": structured_prompt}
-                ]
-            )
+        if WEB_SEARCH_MODEL == "gpt-4o-search-preview" or "search" in WEB_SEARCH_MODEL:
+            # Format for models with built-in web search capability
+            try:
+                response = client.chat.completions.create(
+                    model=WEB_SEARCH_MODEL,
+                    messages=[
+                        {"role": "system", "content": "You are a skilled fact-checker and web researcher. Your role is to provide accurate, well-sourced answers to factual questions based on current web information. Always cite your sources with links and provide specific facts rather than general statements."},
+                        {"role": "user", "content": structured_prompt}
+                    ]
+                )
+                logger.info(f"Web search completed successfully with model {WEB_SEARCH_MODEL}")
+            except Exception as e:
+                # Fallback to using standard model if search model fails
+                logger.error(f"Error using search model: {str(e)}. Falling back to standard model.")
+                response = client.chat.completions.create(
+                    model=FACT_CHECK_MODEL,
+                    messages=[
+                        {"role": "system", "content": "You are a skilled fact-checker. Your role is to provide what you know about this topic without web search capabilities. Admit when you don't have current information."},
+                        {"role": "user", "content": f"What do you know about: {search_query}? (Note: You don't have web search capability right now, just provide what you know)"}
+                    ]
+                )
         else:
-            # Format for models that use explicit function calling for web search
+            # Fallback for models without web search capability
+            logger.warning(f"Model {WEB_SEARCH_MODEL} does not support web search. Using as regular model.")
             response = client.chat.completions.create(
-                model=WEB_SEARCH_MODEL,
+                model=FACT_CHECK_MODEL,
                 messages=[
-                    {"role": "system", "content": "You are a skilled fact-checker and web researcher. Your role is to provide accurate, well-sourced answers to factual questions based on current web information. Always cite your sources with links and provide specific facts rather than general statements."},
-                    {"role": "user", "content": structured_prompt}
-                ],
-                temperature=0.2,
-                tools=[{
-                    "type": "function",
-                    "function": {
-                        "name": "search_web",
-                        "description": "Search the web for real-time information",
-                        "parameters": {
-                            "type": "object",
-                            "properties": {},
-                            "required": []
-                        }
-                    }
-                }],
-                tool_choice={"type": "function", "function": {"name": "search_web"}}
+                    {"role": "system", "content": "You are a skilled fact-checker. Your role is to provide what you know about this topic without web search capabilities. Admit when you don't have current information."},
+                    {"role": "user", "content": f"What do you know about: {search_query}? (Note: You don't have web search capability right now, just provide what you know)"}
+                ]
             )
         
         return {
