@@ -304,3 +304,176 @@
 .flex-grow.max-w-6xl {
   width: 100%;
 }
+
+/* Add these styles to hide duplicate badges */
+.claim-container > span:not(.custom-badge) {
+  display: none !important;
+}
+
+/* Hide any standalone accuracy badges */
+.bg-red-50 > span:not(.custom-badge),
+.bg-green-50 > span:not(.custom-badge),
+.bg-yellow-50 > span:not(.custom-badge),
+.bg-gray-50 > span:not(.custom-badge) {
+  display: none !important;
+}
+
+/* Hide any X marks that appear in the top-right of claims */
+.claim-container > svg.text-red-500,
+.claim-container > svg.text-green-500,
+.claim-container > svg.text-yellow-500,
+.claim-container > svg.text-gray-500 {
+  display: none !important;
+}
+
+/* Target remaining X icons specifically */
+svg[class*="w-4"],
+svg[class*="h-4"]:not(.custom-badge svg) {
+  position: absolute;
+  z-index: -1;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Target any SVG with class containing text-red and not within our custom badges */
+svg[class*="text-red"]:not(.custom-badge *),
+.claim-container > svg {
+  display: none !important;
+}
+
+/* Always show our custom badges */
+.custom-badge {
+  display: inline-flex !important;
+}
+
+/* Always show icons inside our custom badges */
+.custom-badge svg {
+  display: inline-block !important;
+  opacity: 1 !important;
+  position: static !important;
+  z-index: auto !important;
+  pointer-events: auto !important;
+}
+
+/* Target specific patterns for badges */
+span[class*="Inaccurate"],
+span[class*="Accurate"],
+span.rounded-full:not(.custom-badge) {
+  position: absolute !important;
+  z-index: -1 !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  visibility: hidden !important;
+}
+
+/* Old accuracy badge fixes - commented out to avoid conflicts */
+/*
+.top-badge {
+  display: inline-flex !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  z-index: 10 !important;
+}
+
+.top-badge svg {
+  display: inline-block !important;
+  opacity: 1 !important;
+  position: static !important;
+  z-index: auto !important;
+  pointer-events: auto !important;
+}
+
+.claim-container > svg:not(.top-badge svg),
+.claim-container > span:not(.top-badge),
+svg[class*="w-4"]:not(.top-badge svg),
+svg[class*="h-4"]:not(.top-badge svg) {
+  display: none !important;
+}
+
+div:not(.top-badge) > svg[class*="text-red"] {
+  display: none !important;
+}
+
+span[class*="Inaccurate"]:not(.top-badge span),
+span[class*="Accurate"]:not(.top-badge span),
+span.rounded-full:not(.top-badge) {
+  position: absolute !important;
+  z-index: -1 !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  visibility: hidden !important;
+}
+*/
+
+/* Enhanced loading animation styles */
+.progress-bar-animated {
+  width: 100%;
+  animation: progressAnimation 2s linear infinite;
+  background-size: 30px 30px;
+  background-image: linear-gradient(
+    45deg,
+    rgba(255, 255, 255, 0.15) 25%,
+    transparent 25%,
+    transparent 50%,
+    rgba(255, 255, 255, 0.15) 50%,
+    rgba(255, 255, 255, 0.15) 75%,
+    transparent 75%,
+    transparent
+  );
+}
+
+@keyframes progressAnimation {
+  0% {
+    background-position: 0 0;
+  }
+  100% {
+    background-position: 60px 0;
+  }
+}
+
+/* Pulse animation for skeleton loaders */
+.skeleton-pulse {
+  animation: skeleton-pulse 1.5s ease-in-out 0.5s infinite;
+}
+
+@keyframes skeleton-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* Modern analyzing card styles */
+.analyzing-card {
+  backdrop-filter: blur(10px);
+  background-color: rgba(255, 255, 255, 0.9);
+  border-radius: 1rem;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  overflow: hidden;
+  border: 1px solid rgba(226, 232, 240, 0.8);
+  transition: all 0.3s ease;
+}
+
+.analyzing-card:hover {
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  transform: translateY(-2px);
+}
+
+/* Floating animation for icons */
+.float-animation {
+  animation: float 3s ease-in-out infinite;
+}
+
+@keyframes float {
+  0% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+  100% {
+    transform: translateY(0px);
+  }
+}

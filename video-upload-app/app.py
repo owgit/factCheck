@@ -8,7 +8,7 @@ import traceback
 import re  # Ensure re is imported at the module level
 import json  # Add json import at the module level
 import uuid  # Add UUID for task tracking
-from fastapi import FastAPI, File, UploadFile, HTTPException, Form, BackgroundTasks
+from fastapi import FastAPI, File, UploadFile, HTTPException, Form, BackgroundTasks, Header
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from moviepy.editor import VideoFileClip
@@ -49,9 +49,9 @@ try:
         # Set the environment variable explicitly
         os.environ['OPENAI_API_KEY'] = api_key
     else:
-        logger.error("No OpenAI API key found in .env file!")
+        logger.warning("No OpenAI API key found in .env file. The app will rely on user-provided API keys.")
 except Exception as e:
-    logger.error(f"Error reading API key from .env file: {str(e)}")
+    logger.warning(f"Error reading API key from .env file: {str(e)}. The app will rely on user-provided API keys.")
 
 # ... (other imports and setup code)
 
@@ -95,8 +95,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Create OpenAI client with the correct API key
-client = OpenAI(api_key=api_key)
+# Add a function to get OpenAI client with the appropriate key
+def get_openai_client(custom_api_key=None):
+    """Get an OpenAI client with either the custom API key or the server's API key"""
+    # Use custom API key if provided
+    if custom_api_key:
+        logger.info("Using custom API key from request header")
+        return OpenAI(api_key=custom_api_key)
+    
+    # Fallback to server API key
+    if api_key:
+        masked_key = api_key[:10] + "..." + api_key[-5:]
+        logger.info(f"Using server API key: {masked_key}")
+        return OpenAI(api_key=api_key)
+    
+    # If no API key available, return None
+    logger.warning("No API key available (neither user-provided nor server key)")
+    return None
 
 # Log API key (redacted) for debugging
 if api_key:
@@ -105,9 +120,8 @@ if api_key:
     logger.info(f"Model: {FACT_CHECK_MODEL}")
     logger.info(f"Web Search Model: {WEB_SEARCH_MODEL}")
     logger.info(f"All env: {dict(os.environ)}")
-
 else:
-    logger.error("No OpenAI API key found in environment variables or .env file!")
+    logger.warning("No server OpenAI API key found. The server will require users to provide their own API keys.")
 
 UPLOAD_DIRECTORY = os.path.join(os.path.dirname(__file__), "uploads")
 os.makedirs(UPLOAD_DIRECTORY, exist_ok=True)
@@ -126,7 +140,7 @@ def cleanup_old_files():
                 os.remove(file_path)
                 logging.debug(f"Removed old file: {file_path}")
 
-def perform_fact_check(text, detected_language=None, should_use_web_search=True, context='video', preferred_language=None):
+def perform_fact_check(text, detected_language=None, should_use_web_search=True, context='video', preferred_language=None, custom_api_key=None):
     language_instruction = ""
     if preferred_language and preferred_language != 'auto':
         # If user specified a language, use that
@@ -210,6 +224,13 @@ def perform_fact_check(text, detected_language=None, should_use_web_search=True,
     
     for attempt in range(max_retries):
         try:
+            # Get the appropriate OpenAI client
+            client = get_openai_client(custom_api_key)
+            
+            # If no client available, return an error
+            if client is None:
+                return generate_error_fact_check("No OpenAI API key available. Please provide your API key in the interface.", should_use_web_search, context, custom_api_key)
+            
             response = client.chat.completions.create(
                 model=FACT_CHECK_MODEL,
                 messages=[
@@ -290,86 +311,124 @@ def perform_fact_check(text, detected_language=None, should_use_web_search=True,
     # Pass flag and context to error generator
     return generate_error_fact_check("Failed to complete fact-checking after multiple attempts.", should_use_web_search, context)
 
-def generate_error_fact_check(error_message, should_use_web_search=True, context='unknown'):
-    """Generate a properly formatted error message for fact check failures"""
-    
-    # Build models section based on context and flag
-    models_list = []
-    if context == 'video':
-        models_list.append(f"<li><strong>Transcription:</strong> {TRANSCRIPTION_MODEL}</li>")
-    elif context == 'image':
-         models_list.append(f"<li><strong>Image Analysis:</strong> {IMAGE_ANALYSIS_MODEL}</li>")
-    # Always show Fact Checking model if context is text or video
-    if context in ['text', 'video']:
-        models_list.append(f"<li><strong>Fact Checking:</strong> {FACT_CHECK_MODEL}</li>")
+def generate_error_fact_check(error_message, should_use_web_search=True, context='unknown', custom_api_key=None):
+    """Generate a dummy fact check response for error cases"""
+    try:
+        system_prompt = """You are an assistant that generates an HTML error message for a fact checking application. 
+        Format the error as a detailed HTML document explaining what went wrong."""
         
-    if should_use_web_search:
-        models_list.append(f'<li><strong>Web Search:</strong> {WEB_SEARCH_MODEL}</li>')
+        user_prompt = f"""
+        Generate an error message HTML for our fact checking application. The user encountered the following error:
         
-    # Join the list items into a single string with newlines
-    models_html_list = "\n".join(models_list)
-    
-    models_section = f"""
-    <section class="ai-models">
-        <h3>AI Models Used (Attempted):</h3>
-        <ul>{models_html_list}</ul> 
-    </section>
-    """
-    
-    return f"""
-    <div class="fact-check">
-        <h2 class="result">ERROR</h2>
-        <section class="analysis">
-            <h3>Conclusion:</h3>
-            <p>{error_message}</p>
-        </section>
-        <section class="findings">
-            <h3>Findings:</h3>
-            <ul>
-                <li>
-                    <strong>Error:</strong>
-                    <span class="claim-text">Fact-checking service unavailable</span> -
-                    <span class="accuracy">Unable to verify</span>
-                    <p class="explanation">The fact-checking system encountered a technical issue. Please try again later or verify the information manually using reliable sources.</p>
-                </li>
-            </ul>
-        </section>
-        {models_section}
-    </div>
-    """
+        Error: {error_message}
+        
+        Context: {context}
+        
+        Format the error message as HTML with this structure:
+        <div class="fact-check error">
+            <h2 class="result">ERROR</h2>
+            <section class="analysis">
+                <h3>Error Details:</h3>
+                <p>[Detailed explanation of the error]</p>
+                <p>[Suggestions for fixing the issue, if applicable]</p>
+            </section>
+            <section class="findings">
+                <h3>Troubleshooting:</h3>
+                <ul>
+                    <li>[Suggestion 1]</li>
+                    <li>[Suggestion 2]</li>
+                    <li>[Suggestion 3]</li>
+                </ul>
+            </section>
+        </div>
+        
+        Include specific information about the error and provide helpful guidance for the user.
+        """
+        
+        # Get the appropriate OpenAI client
+        client = get_openai_client(custom_api_key)
+        
+        # If no client available, return a simple error message
+        if client is None:
+            return f"""
+            <div class="fact-check error">
+                <h2 class="result">ERROR</h2>
+                <section class="analysis">
+                    <h3>Error Details:</h3>
+                    <p>No OpenAI API key available. Please provide your API key in the interface.</p>
+                    <p>This application requires an OpenAI API key to function. You can add your key in the API Key section at the top of the page.</p>
+                </section>
+                <section class="findings">
+                    <h3>Troubleshooting:</h3>
+                    <ul>
+                        <li>Enter your OpenAI API key in the input field at the top of the page</li>
+                        <li>Make sure your API key starts with "sk-"</li>
+                        <li>Click "Save" to store your API key for future use</li>
+                    </ul>
+                </section>
+            </div>
+            """
+        
+        response = client.chat.completions.create(
+            model=FACT_CHECK_MODEL,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            max_tokens=1000,
+            temperature=0.5
+        )
+        
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        logger.error(f"Error generating error fact check: {str(e)}", exc_info=True)
+        # Return a simple HTML error message if we can't generate the fancy one
+        return f"""
+        <div class="fact-check error">
+            <h2 class="result">ERROR</h2>
+            <section class="analysis">
+                <h3>Error Details:</h3>
+                <p>Error processing your request: {error_message}</p>
+                <p>Additional error: {str(e)}</p>
+            </section>
+        </div>
+        """
 
-def perform_web_search(search_query):
+def perform_web_search(search_query, custom_api_key=None):
     """
     Perform a web search using OpenAI's web search capabilities.
-    
-    Args:
-        search_query: The query to search for
-        
-    Returns:
-        JSON response with search results
+    Returns a structured result with the search query, results, and sources.
     """
     if not USE_WEB_SEARCH:
-        logger.info("Web search is disabled")
+        logger.warning("Web search is disabled. Skipping search for: " + search_query)
         return None
     
-    logger.info(f"Performing web search for: {search_query}")
-    
     try:
-        # Define a structured response prompt
-        structured_prompt = f"""
-        Search the web for information to answer this question:
-
-        "{search_query}"
-
-        Provide a concise but informative answer with specific facts. Include at least 2-3 reputable sources with links where the information was found.
-
-        Format your response in this structure:
-        1. Direct answer to the question (2-3 sentences)
-        2. Key supporting facts (bullet points)
+        search_prompt = f"""
+        Please search the web for information about the following claim:
+        
+        {search_query}
+        
+        Please respond in this format:
+        1. Verified status (is the claim generally accurate, partially accurate, or inaccurate?)
+        2. Summary explanation (2-3 sentences explaining the verification)
         3. Sources (numbered list with links)
         """
         
-                # Use OpenAI's web search capabilities with the appropriate format for the model
+        # Get the appropriate OpenAI client
+        client = get_openai_client(custom_api_key)
+        
+        # If no client available, return None
+        if client is None:
+            logger.error("No API key available for web search")
+            return {
+                "search_query": search_query,
+                "error": "No API key available. Please provide your API key.",
+                "results": None,
+                "sources": []
+            }
+        
+        # Use OpenAI's web search capabilities with the appropriate format for the model
         if WEB_SEARCH_MODEL == "gpt-4o-search-preview" or "search" in WEB_SEARCH_MODEL:
             # Format for models with built-in web search capability
             try:
@@ -377,10 +436,15 @@ def perform_web_search(search_query):
                     model=WEB_SEARCH_MODEL,
                     messages=[
                         {"role": "system", "content": "You are a skilled fact-checker and web researcher. Your role is to provide accurate, well-sourced answers to factual questions based on current web information. Always cite your sources with links and provide specific facts rather than general statements."},
-                        {"role": "user", "content": structured_prompt}
+                        {"role": "user", "content": search_prompt}
                     ]
                 )
                 logger.info(f"Web search completed successfully with model {WEB_SEARCH_MODEL}")
+                return {
+                    "search_query": search_query,
+                    "results": response.choices[0].message.content,
+                    "sources": []
+                }
             except Exception as e:
                 # Fallback to using standard model if search model fails
                 logger.error(f"Error using search model: {str(e)}. Falling back to standard model.")
@@ -391,6 +455,11 @@ def perform_web_search(search_query):
                         {"role": "user", "content": f"What do you know about: {search_query}? (Note: You don't have web search capability right now, just provide what you know)"}
                     ]
                 )
+                return {
+                    "search_query": search_query,
+                    "results": response.choices[0].message.content,
+                    "sources": []
+                }
         else:
             # Fallback for models without web search capability
             logger.warning(f"Model {WEB_SEARCH_MODEL} does not support web search. Using as regular model.")
@@ -401,25 +470,21 @@ def perform_web_search(search_query):
                     {"role": "user", "content": f"What do you know about: {search_query}? (Note: You don't have web search capability right now, just provide what you know)"}
                 ]
             )
-        
-        return {
-            "question": search_query,
-            "answer": response.choices[0].message.content,
-            "model_used": WEB_SEARCH_MODEL,
-            "timestamp": datetime.now().isoformat()
-        }
-    
+            return {
+                "search_query": search_query,
+                "results": response.choices[0].message.content,
+                "sources": []
+            }
     except Exception as e:
         logger.error(f"Error in web search: {str(e)}")
         return {
-            "question": search_query,
-            "answer": f"Error performing web search: {str(e)}",
-            "model_used": WEB_SEARCH_MODEL,
-            "error": True,
-            "timestamp": datetime.now().isoformat()
+            "search_query": search_query,
+            "error": f"Error performing web search: {str(e)}",
+            "results": None,
+            "sources": []
         }
 
-def analyze_image(image_path, should_use_web_search=True, preferred_language=None):
+def analyze_image(image_path, should_use_web_search=True, preferred_language=None, custom_api_key=None):
     try:
         with open(image_path, "rb") as image_file:
             base64_image = base64.b64encode(image_file.read()).decode('utf-8')
@@ -500,6 +565,13 @@ def analyze_image(image_path, should_use_web_search=True, preferred_language=Non
         
         for attempt in range(max_retries):
             try:
+                # Get the appropriate OpenAI client
+                client = get_openai_client(custom_api_key)
+                
+                # If no client available, return an error
+                if client is None:
+                    return generate_error_fact_check("No OpenAI API key available. Please provide your API key in the interface.", should_use_web_search, 'image', custom_api_key)
+                
                 response = client.chat.completions.create(
                     model=IMAGE_ANALYSIS_MODEL,
                     messages=[
@@ -600,6 +672,13 @@ def analyze_image(image_path, should_use_web_search=True, preferred_language=Non
                         Important: Formulate each claim as a direct statement (not a question) that can be fact-checked.
                         """
                         
+                        # Get the appropriate OpenAI client
+                        client = get_openai_client(custom_api_key)
+                        
+                        # If no client available, return an error
+                        if client is None:
+                            return generate_error_fact_check("No OpenAI API key available. Please provide your API key in the interface.", should_use_web_search, 'image', custom_api_key)
+                        
                         claims_response = client.chat.completions.create(
                             model=IMAGE_ANALYSIS_MODEL,
                             messages=[
@@ -641,7 +720,7 @@ def analyze_image(image_path, should_use_web_search=True, preferred_language=Non
                         # Perform web search for each claim
                         web_search_results = []
                         for claim in factual_claims[:5]:  # Limit to 5 claims
-                            search_result = perform_web_search(claim)
+                            search_result = perform_web_search(claim, custom_api_key)
                             if search_result:
                                 web_search_results.append(search_result)
                         
@@ -686,7 +765,7 @@ def analyze_image(image_path, should_use_web_search=True, preferred_language=Non
         "web_search_results": None
     }
 
-async def process_video(video_path, should_use_web_search=True, task_id=None, preferred_language='auto'):
+async def process_video(video_path, should_use_web_search=True, task_id=None, preferred_language='auto', custom_api_key=None):
     try:
         audio_path = os.path.join(UPLOAD_DIRECTORY, "extracted_audio.wav")
         video = VideoFileClip(video_path)
@@ -694,6 +773,13 @@ async def process_video(video_path, should_use_web_search=True, task_id=None, pr
         video.close()
 
         with open(audio_path, "rb") as audio_file:
+            # Get the appropriate OpenAI client
+            client = get_openai_client(custom_api_key)
+            
+            # If no client available, return an error
+            if client is None:
+                return generate_error_fact_check("No OpenAI API key available. Please provide your API key in the interface.", should_use_web_search, 'video', custom_api_key)
+            
             transcription = client.audio.transcriptions.create(
                 model=TRANSCRIPTION_MODEL, 
                 file=audio_file,
@@ -713,7 +799,8 @@ async def process_video(video_path, should_use_web_search=True, task_id=None, pr
             detected_language, 
             should_use_web_search, 
             context='video',
-            preferred_language=preferred_language
+            preferred_language=preferred_language,
+            custom_api_key=custom_api_key
         )
         
         # Perform web search if enabled
@@ -733,6 +820,13 @@ async def process_video(video_path, should_use_web_search=True, task_id=None, pr
                 Transcription:
                 {transcription_text[:2000]}  # Use first 2000 chars to keep context manageable
                 """
+                
+                # Get the appropriate OpenAI client
+                client = get_openai_client(custom_api_key)
+                
+                # If no client available, return an error
+                if client is None:
+                    return generate_error_fact_check("No OpenAI API key available. Please provide your API key in the interface.", should_use_web_search, 'video', custom_api_key)
                 
                 claims_response = client.chat.completions.create(
                     model=FACT_CHECK_MODEL,  # Use the same model as fact checking
@@ -763,7 +857,7 @@ async def process_video(video_path, should_use_web_search=True, task_id=None, pr
                 # Perform web search for each claim
                 web_search_results = []
                 for claim in factual_claims[:5]:  # Limit to 5 claims
-                    search_result = perform_web_search(claim)
+                    search_result = perform_web_search(claim, custom_api_key)
                     if search_result:
                         web_search_results.append(search_result)
                 
@@ -1349,7 +1443,8 @@ async def upload_file(
     url: str = Form(None), 
     use_web_search: str = Form('true'),
     preferred_language: str = Form('auto'),
-    background_tasks: BackgroundTasks = None
+    background_tasks: BackgroundTasks = None,
+    x_openai_api_key: str = Header(None)
 ):
     try:
         # Convert string 'true'/'false' to boolean
@@ -1404,8 +1499,8 @@ async def upload_file(
             logger.info(f"Processing video: {media_path}")
             # Generate a task ID for tracking
             task_id = str(uuid.uuid4())
-            # Pass should_use_web_search, task_id, and preferred_language to process_video
-            background_tasks.add_task(process_video, media_path, should_use_web_search, task_id, preferred_language)
+            # Pass custom_api_key to process_video
+            background_tasks.add_task(process_video, media_path, should_use_web_search, task_id, preferred_language, x_openai_api_key)
             # Immediate response for background task with task_id
             return JSONResponse(content={
                 "message": "Video processing started. Results will be available shortly.", 
@@ -1415,8 +1510,8 @@ async def upload_file(
         
         elif media_path.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
             logger.info(f"Processing image: {media_path}")
-            # Process as image
-            image_analysis_results = analyze_image(media_path, should_use_web_search, preferred_language)
+            # Process as image with custom API key
+            image_analysis_results = analyze_image(media_path, should_use_web_search, preferred_language, x_openai_api_key)
             
             # Extract the components from the analysis results
             analysis_result = image_analysis_results.get("analysis_result", "")
@@ -1447,9 +1542,22 @@ async def upload_file(
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/models")
-async def get_models():
+async def get_models(x_openai_api_key: str = Header(None)):
     """Get information about the AI models being used by the application"""
     try:
+        # Check if user-provided API key is valid
+        user_key_status = "not_provided"
+        if x_openai_api_key:
+            try:
+                # Create a test client with user key to validate it
+                test_client = OpenAI(api_key=x_openai_api_key)
+                # Make a minimal API call to test the key
+                _ = test_client.models.list(limit=1)
+                user_key_status = "valid"
+            except Exception as e:
+                logger.warning(f"Invalid user API key provided: {str(e)}")
+                user_key_status = "invalid"
+        
         return JSONResponse(content={
             "models": {
                 "transcription": {
@@ -1479,18 +1587,27 @@ async def get_models():
                 "web_search": {
                     "enabled": USE_WEB_SEARCH,
                     "description": "Real-time web search for fact verification"
+                },
+                "user_api_key": {
+                    "provided": x_openai_api_key is not None,
+                    "status": user_key_status,
+                    "description": "Custom OpenAI API key"
                 }
             },
-            "status": "active"
+            "status": "active",
+            "server_key_available": api_key is not None
         })
     except Exception as e:
         logger.error(f"Error retrieving model information: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Error retrieving model information")
 
 @app.post("/fact-check-text")
-async def fact_check_text(text: str = Form(...), 
-                         use_web_search: str = Form('true'), 
-                         preferred_language: str = Form('auto')):
+async def fact_check_text(
+    text: str = Form(...), 
+    use_web_search: str = Form('true'), 
+    preferred_language: str = Form('auto'),
+    x_openai_api_key: str = Header(None)
+):
     try:
         # Convert string 'true'/'false' to boolean
         should_use_web_search = use_web_search.lower() == 'true'
@@ -1504,13 +1621,14 @@ async def fact_check_text(text: str = Form(...),
         except Exception as e:
             logger.warning(f"Could not detect language: {str(e)}")
             
-        # Perform fact-checking on the text, pass flag and context ('text')
+        # Perform fact-checking on the text with custom API key
         fact_check_html = perform_fact_check(
             text, 
             detected_language, 
             should_use_web_search, 
             context='text',
-            preferred_language=preferred_language
+            preferred_language=preferred_language,
+            custom_api_key=x_openai_api_key
         )
         
         # Perform web search if enabled for this request
@@ -1530,6 +1648,13 @@ async def fact_check_text(text: str = Form(...),
                 Text:
                 {text[:2000]}  # Use first 2000 chars to keep context manageable
                 """
+                
+                # Get the appropriate OpenAI client
+                client = get_openai_client(x_openai_api_key)
+                
+                # If no client available, return an error
+                if client is None:
+                    return generate_error_fact_check("No OpenAI API key available. Please provide your API key in the interface.", should_use_web_search, 'text', x_openai_api_key)
                 
                 claims_response = client.chat.completions.create(
                     model=FACT_CHECK_MODEL,
@@ -1571,7 +1696,7 @@ async def fact_check_text(text: str = Form(...),
                 # Perform web search for each claim
                 web_search_results = []
                 for claim in factual_claims[:5]:  # Limit to 5 claims
-                    search_result = perform_web_search(claim)
+                    search_result = perform_web_search(claim, x_openai_api_key)
                     if search_result:
                         web_search_results.append(search_result)
                 
@@ -1596,12 +1721,27 @@ async def fact_check_text(text: str = Form(...),
         raise HTTPException(status_code=500, detail=f"Error fact-checking text: {str(e)}")
 
 @app.get("/task/{task_id}")
-async def get_task_status(task_id: str):
+async def get_task_status(task_id: str, x_openai_api_key: str = Header(None)):
     """Get the status of a background task by its ID"""
     try:
         # Check if task exists in our tracking dictionary
         if task_id not in task_results:
             raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
+        
+        # If the task is still in progress and has an error status, try to generate a better error message
+        task_data = task_results[task_id]
+        if task_data.get('status') == 'error' and 'error_details' in task_data:
+            # Generate a more detailed error message using the AI
+            try:
+                error_html = generate_error_fact_check(
+                    task_data['error_details'], 
+                    task_data.get('web_search_enabled', True),
+                    task_data.get('context', 'unknown'),
+                    custom_api_key=x_openai_api_key
+                )
+                task_data['error_html'] = error_html
+            except Exception as e:
+                logger.error(f"Error generating detailed error message: {str(e)}")
         
         # Return the task result
         return JSONResponse(content=task_results[task_id])

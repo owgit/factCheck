@@ -25,6 +25,9 @@ An AI-powered fact-checking application that automatically transcribes, analyzes
 - **Detailed Reports**: Get comprehensive fact-check reports with sources and reliability scores
 - **Multilingual Support**: Automatically detects input language and responds accordingly
 - **Web Search Integration**: Enhances verification accuracy with real-time web information
+- **User API Keys**: Users can provide their own OpenAI API key to use their own credits
+- **Monetization Ready**: Built-in ad placeholders with skyscraper ads on both sides
+- **Responsive Design**: Optimized for all screen sizes with a wider content area on large screens
 
 ## Screenshots
 
@@ -44,7 +47,8 @@ An AI-powered fact-checking application that automatically transcribes, analyzes
 ### Frontend
 - React with user-friendly tabbed interface
 - Tailwind CSS for styling
-- Responsive design for all devices
+- Responsive design with skyscraper ad support
+- User-provided API key management
 
 ### Infrastructure
 - Docker and Docker Compose for containerization
@@ -102,7 +106,7 @@ Key environment variables:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `OPENAI_API_KEY` | Your OpenAI API key | required |
+| `OPENAI_API_KEY` | Your OpenAI API key (users can also input their own in the UI) | required for server |
 | `FACT_CHECK_MODEL` | OpenAI model for fact checking | chatgpt-4o-latest |
 | `IMAGE_ANALYSIS_MODEL` | OpenAI model for image analysis | gpt-4o-mini |
 | `TRANSCRIPTION_MODEL` | OpenAI model for transcription | whisper-1 |
@@ -112,6 +116,28 @@ Key environment variables:
 | `INSTAGRAM_PASSWORD` | Instagram password for content extraction | optional |
 
 See `.env.example` for all configuration options.
+
+## Monetization
+
+The application includes built-in ad placeholders for easy monetization:
+
+- **Skyscraper Ads**: 160px × 600px ads on both sides of the content
+- **Leaderboard Ads**: 728px × 90px ads at the top and bottom
+- **In-Content Ads**: Banner ads (468px × 60px) between content sections
+
+These placeholders can be easily replaced with actual ad code from ad networks like Google AdSense.
+
+## User API Keys
+
+Users can now provide their own OpenAI API key in the UI:
+
+- Secure input with show/hide functionality
+- Local storage to remember the key between sessions 
+- Validation to ensure proper key format (must start with "sk-")
+- Visual feedback for saved and invalid states
+- All API requests include the user's key when provided
+
+This feature allows users to use their own OpenAI credits instead of the server's.
 
 ## How It Works
 
@@ -152,6 +178,13 @@ If the web search functionality isn't working:
 - Check that `WEB_SEARCH_MODEL` is set to a search-capable model (e.g., `gpt-4o-search-preview`)
 - Ensure `USE_WEB_SEARCH` is set to `true` in your environment
 
+### User API Key Issues
+
+If the user API key functionality isn't working:
+- Make sure your backend server is configured to accept the `X-OpenAI-Api-Key` header
+- Verify that the OpenAI key format is correct (should start with "sk-")
+- Try clearing browser storage and re-entering the key
+
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
@@ -164,7 +197,15 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## License
 
-This project is licensed under the MIT License.
+This project is licensed under the MIT License, which allows you to use, modify, and distribute the code freely.
+
+## Attribution
+
+While not required by the license, if you use this repository, the author would appreciate:
+
+1. Including a credit to Uygar Duzgun in your project
+2. Adding a link back to https://uygarduzgun.com
+3. Letting the author know how you're using the project
 
 ## Contact
 

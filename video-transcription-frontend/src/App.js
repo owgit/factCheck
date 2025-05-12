@@ -31,6 +31,9 @@ import About from './components/About';
 import AdLayout from './components/AdLayout';
 import InContentAd from './components/InContentAd';
 
+// Import API key input component
+import ApiKeyInput from './components/ApiKeyInput';
+
 const MAX_UPLOAD_SIZE = parseInt(process.env.REACT_APP_MAX_UPLOAD_SIZE || '250', 10);
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
 
@@ -151,6 +154,9 @@ const extractFactCheckData = (htmlContent) => {
     }
     
     console.log('Extracted claim:', { claimText, accuracy, explanation });
+    
+    // Clean up the accuracy string to avoid any HTML or extra badges
+    accuracy = accuracy.replace(/<[^>]*>/g, '').trim();
     
     return { claimText, accuracy, explanation };
   });
@@ -300,22 +306,22 @@ const FactCheckResults = ({ htmlContent, onShare, onExport, webSearchResults }) 
   const getAccuracyClass = (accuracy) => {
     accuracy = accuracy.toLowerCase();
     if (accuracy.includes('inaccurate'))
-      return 'bg-red-100 text-red-800';
+      return 'bg-red-100 text-red-800 border border-red-200';
     if (accuracy.includes('accurate') && !accuracy.includes('mostly') && !accuracy.includes('partly'))
-      return 'bg-green-100 text-green-800';
+      return 'bg-green-100 text-green-800 border border-green-200';
     if (accuracy.includes('mostly true'))
-      return 'bg-green-50 text-green-700';
+      return 'bg-green-50 text-green-700 border border-green-100';
     if (accuracy.includes('partly accurate'))
-      return 'bg-yellow-100 text-yellow-800';
-    if (accuracy.includes('mostly false'))
-      return 'bg-red-50 text-red-700';
+      return 'bg-yellow-100 text-yellow-800 border border-yellow-200';
+    if (accuracy.includes('mostly false') || accuracy.includes('mostly inaccurate'))
+      return 'bg-red-50 text-red-700 border border-red-100';
     if (accuracy.includes('false') && !accuracy.includes('mostly'))
-      return 'bg-red-100 text-red-800';
+      return 'bg-red-100 text-red-800 border border-red-200';
     if (accuracy.includes('expert consensus') || accuracy.includes('based on expert'))
-      return 'bg-blue-100 text-blue-800';
+      return 'bg-blue-100 text-blue-800 border border-blue-200';
     if (accuracy.includes('unable') || accuracy.includes('don\'t know'))
-      return 'bg-gray-100 text-gray-800';
-    return 'bg-gray-100 text-gray-800';
+      return 'bg-gray-100 text-gray-800 border border-gray-200';
+    return 'bg-gray-100 text-gray-800 border border-gray-200';
   };
 
   const getResultIcon = (result) => {
@@ -389,34 +395,60 @@ const FactCheckResults = ({ htmlContent, onShare, onExport, webSearchResults }) 
       <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
         <h3 className="text-xl font-semibold mb-4">Claims Analysis</h3>
         <div className="space-y-4">
-          {console.log('Rendering findings:', factData.findings)}
           {factData.findings && factData.findings.length > 0 ? (
             factData.findings.map((finding, index) => {
               const isWebVerified = isClaimWebVerified(finding.claimText);
-              console.log('Rendering finding:', finding);
+              const accuracy = finding.accuracy.toLowerCase();
+              
+              // Define badge styles based on accuracy level
+              let badgeColor, badgeIcon;
+              
+              if (accuracy.includes('inaccurate') || accuracy.includes('false')) {
+                badgeColor = "bg-gradient-to-r from-red-50 to-red-100 text-red-800 border-red-200";
+                badgeIcon = <XMarkIcon className="w-4 h-4 mr-1.5 text-red-600" />;
+              } else if (accuracy.includes('partly') || accuracy.includes('mixed')) {
+                badgeColor = "bg-gradient-to-r from-yellow-50 to-yellow-100 text-yellow-800 border-yellow-200";
+                badgeIcon = <ExclamationCircleIcon className="w-4 h-4 mr-1.5 text-yellow-600" />;
+              } else if (accuracy.includes('accurate') || accuracy.includes('true')) {
+                badgeColor = "bg-gradient-to-r from-green-50 to-green-100 text-green-800 border-green-200";
+                badgeIcon = <CheckIcon className="w-4 h-4 mr-1.5 text-green-600" />;
+              } else {
+                badgeColor = "bg-gradient-to-r from-gray-50 to-gray-100 text-gray-800 border-gray-200";
+                badgeIcon = <QuestionMarkCircleIcon className="w-4 h-4 mr-1.5 text-gray-600" />;
+              }
               
               return (
-                <div key={index} className={`p-4 border rounded-lg hover:bg-gray-50 transition-colors ${getBinaryTruthColor(finding.accuracy)}`}>
-                  <div className="flex items-start">
+                <div key={index} className={`p-4 border rounded-lg hover:bg-gray-50 transition-colors ${accuracy.includes('inaccurate') || accuracy.includes('false') ? 'bg-red-50' : accuracy.includes('partly') ? 'bg-yellow-50' : 'bg-green-50'}`}>
+                  <div className="flex items-start relative">
+                    {/* Claim Icon */}
                     <div className="flex-shrink-0 mt-1">
-                      {getBinaryTruthIcon(finding.accuracy)}
+                      {accuracy.includes('inaccurate') || accuracy.includes('false') ? (
+                        <XMarkIcon className="w-5 h-5 text-red-500" />
+                      ) : accuracy.includes('partly') || accuracy.includes('mixed') ? (
+                        <ExclamationCircleIcon className="w-5 h-5 text-yellow-500" />
+                      ) : (
+                        <CheckIcon className="w-5 h-5 text-green-500" />
+                      )}
                     </div>
-                    <div className="ml-3 w-full">
-                      <div className="flex justify-between">
-                        <div className="flex items-center">
-                          <p className="font-medium text-gray-900">{finding.claimText}</p>
-                          {isWebVerified && (
-                            <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
-                              <GlobeAltIcon className="h-3 w-3 mr-1" />
-                              Web Verified
-                            </span>
-                          )}
-                        </div>
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getAccuracyClass(finding.accuracy)}`}>
-                          {finding.accuracy}
+                    
+                    {/* Claim Content */}
+                    <div className="ml-3 w-full pr-20">
+                      <p className="font-medium text-gray-900">{finding.claimText}</p>
+                      {isWebVerified && (
+                        <span className="mt-1 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                          <GlobeAltIcon className="h-3 w-3 mr-1" />
+                          Web Verified
                         </span>
+                      )}
+                      <p className="mt-2 text-sm text-gray-600">{finding.explanation}</p>
+                    </div>
+                    
+                    {/* Accuracy Badge (Absolutely Positioned) */}
+                    <div className="absolute top-0 right-0">
+                      <div className={`inline-flex items-center px-3 py-1.5 border rounded-md shadow-sm ${badgeColor}`}>
+                        {badgeIcon}
+                        <span className="text-sm font-medium">{finding.accuracy}</span>
                       </div>
-                      <p className="mt-1 text-sm text-gray-600">{finding.explanation}</p>
                     </div>
                   </div>
                 </div>
@@ -648,6 +680,7 @@ function App() {
   const [webSearchDisabled, setWebSearchDisabled] = useState(false); // Whether checkbox should be disabled
   const [taskId, setTaskId] = useState(null); // Track task ID for background processing
   const [pollingInterval, setPollingInterval] = useState(null); // Interval for polling task status
+  const [openaiApiKey, setOpenaiApiKey] = useState(''); // Store the user's OpenAI API key
 
   // Common language options
   const languageOptions = [
@@ -678,7 +711,12 @@ function App() {
     // Fetch model info from the API
     const fetchModels = async () => {
       try {
-        const response = await axios.get(`${API_BASE_URL}/models`);
+        const headers = {};
+        if (openaiApiKey) {
+          headers['X-OpenAI-Api-Key'] = openaiApiKey;
+        }
+        
+        const response = await axios.get(`${API_BASE_URL}/models`, { headers });
         
         // Check if web search is allowed by the server
         const webSearchAllowed = response.data.features?.web_search?.enabled === true;
@@ -698,7 +736,7 @@ function App() {
     };
     
     fetchModels();
-  }, []);
+  }, [openaiApiKey]);
 
   // Effect to clean up polling interval when component unmounts
   useEffect(() => {
@@ -721,7 +759,12 @@ function App() {
     // Set up new polling interval
     const intervalId = setInterval(async () => {
       try {
-        const response = await axios.get(`${API_BASE_URL}/task/${id}`);
+        const headers = {};
+        if (openaiApiKey) {
+          headers['X-OpenAI-Api-Key'] = openaiApiKey;
+        }
+        
+        const response = await axios.get(`${API_BASE_URL}/task/${id}`, { headers });
         const taskData = response.data;
         
         // If task is completed or errored, stop polling
@@ -754,7 +797,7 @@ function App() {
     }, 2000); // Poll every 2 seconds
     
     setPollingInterval(intervalId);
-  }, [pollingInterval]);
+  }, [pollingInterval, openaiApiKey]);
 
   // Effect to save web search setting to localStorage when it changes
   useEffect(() => {
@@ -807,6 +850,11 @@ function App() {
 
     try {
       let response;
+      // Prepare headers with API key if provided
+      const headers = { 'Content-Type': 'multipart/form-data' };
+      if (openaiApiKey) {
+        headers['X-OpenAI-Api-Key'] = openaiApiKey;
+      }
       
       if (inputMode === 'text') {
         // Handle free text submission
@@ -816,7 +864,7 @@ function App() {
         formData.append('preferred_language', preferredLanguage); // Add preferred language to the request
         
         response = await axios.post(`${API_BASE_URL}/fact-check-text`, formData, {
-          headers: { 'Content-Type': 'multipart/form-data' },
+          headers: headers,
         });
         
         // Set result directly for text input (synchronous)
@@ -842,7 +890,7 @@ function App() {
         formData.append('preferred_language', preferredLanguage); // Add preferred language to the request
         
         response = await axios.post(`${API_BASE_URL}/upload`, formData, {
-          headers: { 'Content-Type': 'multipart/form-data' },
+          headers: headers,
           onUploadProgress: (progressEvent) => {
             const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
             if (percentCompleted === 100) setStage(2);
@@ -886,7 +934,7 @@ function App() {
       setError(error.response?.data?.detail || 'An error occurred');
       setLoading(false);
     }
-  }, [file, instagramLink, freeText, inputMode, useWebSearch, pollTaskStatus, preferredLanguage]);
+  }, [file, instagramLink, freeText, inputMode, useWebSearch, pollTaskStatus, preferredLanguage, openaiApiKey]);
 
   const getFactCheckStatus = useCallback((factCheck) => {
     if (!factCheck) return { status: 'UNKNOWN', color: 'text-yellow-400' };
@@ -1141,6 +1189,9 @@ function App() {
                             : "When enabled, fact-checks will include information from web searches for more accurate results."}
                         </p>
                       </div>
+                      
+                      {/* OpenAI API Key Input */}
+                      <ApiKeyInput onApiKeyChange={setOpenaiApiKey} />
 
                       <form onSubmit={handleSubmit} className="space-y-6">
                         <div 
@@ -1292,11 +1343,13 @@ function App() {
                           >
                             {loading ? (
                               <>
-                                <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" aria-hidden="true">
-                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                </svg>
-                                {stageLabels[stage] || 'Processing'}
+                                <div className="flex items-center">
+                                  <svg className="animate-spin -ml-1 mr-2 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" aria-hidden="true">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                  </svg>
+                                  <span>{stageLabels[stage] || 'Processing'}</span>
+                                </div>
                               </>
                             ) : inputMode === 'file' ? (
                               'Upload & Analyze'
@@ -1332,20 +1385,81 @@ function App() {
                   >
                     {/* Processing State for Video */}
                     {result.status === 'processing' ? (
-                      <div className="flex flex-col items-center justify-center py-8">
-                        <div className="animate-spin mb-4">
-                          <svg className="w-12 h-12 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" aria-hidden="true">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                          </svg>
+                      <div className="analyzing-card p-8">
+                        <div className="flex flex-col items-center justify-center">
+                          <div className="mb-6 float-animation">
+                            <div className="relative">
+                              <div className="absolute inset-0 bg-blue-400 opacity-20 rounded-full blur-xl"></div>
+                              <svg className="w-16 h-16 text-blue-500 relative z-10" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" aria-hidden="true">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                              </svg>
+                            </div>
+                          </div>
+                          
+                          <h3 className="text-2xl font-bold text-gray-800 mb-3">Analyzing Your Content</h3>
+                          <p className="text-gray-600 text-center max-w-md mb-6">
+                            Our AI is fact-checking your content, verifying claims, and searching for supporting evidence.
+                          </p>
+                          
+                          {/* Progress bar */}
+                          <div className="w-full max-w-md mb-8">
+                            <div className="relative pt-1">
+                              <div className="flex mb-2 items-center justify-between">
+                                <div>
+                                  <span className="text-xs font-semibold inline-block py-1 px-2 uppercase rounded-full text-blue-600 bg-blue-200">
+                                    Processing
+                                  </span>
+                                </div>
+                                <div className="text-right">
+                                  <span className="text-xs font-semibold inline-block text-blue-600">
+                                    Please wait
+                                  </span>
+                                </div>
+                              </div>
+                              <div className="overflow-hidden h-2 mb-4 text-xs flex rounded bg-blue-100">
+                                <div className="progress-bar-animated shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center bg-blue-500"></div>
+                              </div>
+                            </div>
+                          </div>
+                          
+                          {/* Processing steps */}
+                          <div className="w-full max-w-md space-y-4">
+                            <div className="flex items-center skeleton-pulse">
+                              <div className="flex-shrink-0 h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center">
+                                <DocumentTextIcon className="h-4 w-4 text-blue-600" />
+                              </div>
+                              <div className="ml-4 flex-1">
+                                <div className="h-2.5 bg-gray-200 rounded-full w-full mb-2"></div>
+                                <div className="h-2 bg-gray-200 rounded-full w-3/4"></div>
+                              </div>
+                            </div>
+                            
+                            <div className="flex items-center skeleton-pulse" style={{ animationDelay: "0.2s" }}>
+                              <div className="flex-shrink-0 h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center">
+                                <GlobeAltIcon className="h-4 w-4 text-blue-600" />
+                              </div>
+                              <div className="ml-4 flex-1">
+                                <div className="h-2.5 bg-gray-200 rounded-full w-full mb-2"></div>
+                                <div className="h-2 bg-gray-200 rounded-full w-1/2"></div>
+                              </div>
+                            </div>
+                            
+                            <div className="flex items-center skeleton-pulse" style={{ animationDelay: "0.4s" }}>
+                              <div className="flex-shrink-0 h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center">
+                                <CheckIcon className="h-4 w-4 text-blue-600" />
+                              </div>
+                              <div className="ml-4 flex-1">
+                                <div className="h-2.5 bg-gray-200 rounded-full w-full mb-2"></div>
+                                <div className="h-2 bg-gray-200 rounded-full w-2/3"></div>
+                              </div>
+                            </div>
+                          </div>
+                          
+                          <p className="text-gray-500 text-sm mt-8">
+                            Analysis usually takes 15-30 seconds depending on content length. Results will appear automatically.
+                          </p>
                         </div>
-                        <h3 className="text-xl font-semibold text-gray-800 mb-2">Video Processing</h3>
-                        <p className="text-gray-600 text-center max-w-md">
-                          Your video is being transcribed and fact-checked. This may take a few minutes depending on the length of the video.
-                        </p>
-                        <p className="text-gray-500 text-sm mt-4">
-                          The results will appear automatically when ready. Please don't close this window.
-                        </p>
                       </div>
                     ) : (
                       <>
